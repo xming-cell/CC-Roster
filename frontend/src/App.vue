@@ -1,11 +1,15 @@
-<script setup lang="ts"></script>
+<script setup lang="ts">
+import { onMounted, ref } from 'vue'
+
+const status = ref('loading...')
+
+onMounted(async () => {
+  const res = await fetch('/api/health')
+  const data = (await res.json()) as { status: string }
+  status.value = data.status
+})
+</script>
 
 <template>
-  <h1>You did it!</h1>
-  <p>
-    Visit <a href="https://vuejs.org/" target="_blank" rel="noopener">vuejs.org</a> to read the
-    documentation
-  </p>
+  <p>backend: {{ status }}</p>
 </template>
-
-<style scoped></style>
