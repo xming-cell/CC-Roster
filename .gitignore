@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+frontend/dist/
+.vite/
+
+# 密钥与本地配置（注意 .env.example 要提交）
+.env
+.env.*
+!.env.example
+
+# 本地数据
+*.db
+*.sqlite3
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
