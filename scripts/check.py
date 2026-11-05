@@ -22,6 +22,11 @@ def run(name: str, args: list[str], cwd: Path) -> None:
 
 
 def main() -> None:
+    # 硬门禁先行：越界改动 / 禁用写法都是秒级检查，不必等两套测试跑完才发现
+    guards = str(ROOT / "scripts" / "guards.py")
+    run("guard scope", [sys.executable, guards, "scope"], ROOT)
+    run("guard forbidden", [sys.executable, guards, "forbidden"], ROOT)
+
     run("backend lint", ["uv", "run", "ruff", "check", "."], BACKEND)
     run("backend format", ["uv", "run", "ruff", "format", "--check", "."], BACKEND)
     run("backend types", ["uv", "run", "mypy", "src"], BACKEND)
