@@ -4,6 +4,7 @@
 
 - 骨架完成：后端 health 端点 + 1 个测试；前端调通 `/api/health`；`scripts/check.py` 七道门 + CI 打通。
 - 工作流基线加固完成（任务卡 001）：规则已机器化，`check.py` 现在含 `guard scope` / `guard forbidden` 两步硬门禁。
+- 根目录 `README.md` 已改写为「产品介绍 + 开发者上手」文档；该文件已在 001 卡 scope 中登记（同卡文档改动）。
 - 最近一次验收：见 `specs/001-ai-collab-baseline/tasks.md` 的「验收记录」。
 
 ## 下一个可执行命令

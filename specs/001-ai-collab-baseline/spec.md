@@ -30,12 +30,14 @@
 AGENTS.md
 AGENT.md
 PROGRESS.md
+README.md  # 用户要求补齐产品介绍与开发者上手文档
 rules/**
 scripts/**
 specs/**
 ```
 
 - `AGENT.md` 是本次 `git mv` 的旧路径，保留一行仅为让删除动作本身合法。
+- `README.md` 为同卡补齐的对外说明文档，理由记录在 `PROGRESS.md`。
 - `ghfetch.ps1` 已删除，不入库（见 tasks.md T8）。
 
 ## 边界用例（实现时必须想到）
