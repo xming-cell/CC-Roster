@@ -16,7 +16,7 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 
 ## 当前状态
 
-**v0.0.1 · 骨架阶段。** 当前任务卡为 `specs/001-ai-collab-baseline`（AI 协作基线加固；`specs/002` 待开卡）。
+**v0.0.1 · 规划阶段。** 当前任务卡为 `specs/002-decision-baseline`（决策与架构基线；001 已完成）。
 
 已落地：
 
@@ -24,6 +24,7 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 - Vue 3 前端首页调用健康检查并展示状态
 - 后端 / 前端各 1 个测试
 - `scripts/check.py` 一键验收，GitHub Actions CI 已接通
+- 需求草案、后续任务拆解与架构决策（`docs/requirements.md`、`docs/task-plan.md`、`docs/decisions.md`）
 
 规划中：
 
@@ -137,6 +138,9 @@ uv run python scripts/check.py
 
 - [AGENTS.md](AGENTS.md)：AI 协作硬约定与验证命令
 - [PROGRESS.md](PROGRESS.md)：当前进度、下一个可执行命令、已知坑
+- [docs/requirements.md](docs/requirements.md)：产品需求草案
+- [docs/task-plan.md](docs/task-plan.md)：后续任务拆解（初稿）
+- [docs/decisions.md](docs/decisions.md)：已确认的架构决策（ADR-001～ADR-008）
 - [rules/](rules/)：后端、前端、测试、提交细则
 - [specs/](specs/)：任务卡与当前任务指针
 

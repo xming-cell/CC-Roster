@@ -31,6 +31,7 @@ AGENTS.md
 AGENT.md
 PROGRESS.md
 README.md  # 用户要求补齐产品介绍与开发者上手文档
+docs/**  # 需求与后续任务规划文档（requirements.md / task-plan.md）
 rules/**
 scripts/**
 specs/**

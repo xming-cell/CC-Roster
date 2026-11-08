@@ -5,7 +5,9 @@
 - 骨架完成：后端 health 端点 + 1 个测试；前端调通 `/api/health`；`scripts/check.py` 七道门 + CI 打通。
 - 工作流基线加固完成（任务卡 001）：规则已机器化，`check.py` 现在含 `guard scope` / `guard forbidden` 两步硬门禁。
 - 根目录 `README.md` 已改写为「产品介绍 + 开发者上手」文档；该文件已在 001 卡 scope 中登记（同卡文档改动）。
-- 最近一次验收：见 `specs/001-ai-collab-baseline/tasks.md` 的「验收记录」。
+- 已产出后续任务拆解初稿 `docs/task-plan.md`：覆盖 F-01～F-17 / N-1～N-11。
+- 任务卡 002 完成：D-1～D-8 已拍板并写入 `docs/decisions.md`；适配器契约与领域模型成文；未写业务代码。
+- 最近一次验收：见 `specs/002-decision-baseline/tasks.md` 的「验收记录」。
 
 ## 下一个可执行命令
 
@@ -16,9 +18,11 @@ uv run python scripts/check.py
 
 开新任务时的固定动作：
 
-1. 复制 `specs/_template/` → `specs/002-<短名>/`，填 `spec.md` 的 DoD 与 scope 块；
-2. 把 `specs/CURRENT` 改成 `002`（不改则 `guard scope` 会跳过范围校验）；
+1. 复制 `specs/_template/` → `specs/NNN-<短名>/`，填 `spec.md` 的 DoD 与 scope 块；
+2. 把 `specs/CURRENT` 改成 `NNN`（不改则 `guard scope` 会跳过范围校验）；
 3. 只动 scope 内的文件，做完把 check.py 输出贴进 `tasks.md`。
+
+下一张卡：`003 — 本地应用基础设施`；开工前先读 `docs/decisions.md` 的 ADR-005 / ADR-006 / ADR-007。
 
 ## 已知坑
 
