@@ -16,14 +16,16 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 
 ## 当前状态
 
-**v0.0.1 · 规划阶段。** 当前任务卡为 `specs/002-decision-baseline`（决策与架构基线；001 已完成）。
+**v0.0.1 · 基础设施阶段。** 任务卡 003（本地应用基础设施）已完成；001 / 002 已完成。
 
 已落地：
 
-- FastAPI 后端 + `GET /api/health`
-- Vue 3 前端首页调用健康检查并展示状态
-- 后端 / 前端各 1 个测试
-- `scripts/check.py` 一键验收，GitHub Actions CI 已接通
+- FastAPI 后端 + `GET /api/health`；所有错误统一返回 `{code, message}`
+- 跨平台数据目录、SQLite 索引（WAL + `user_version` 幂等迁移）、原子 JSON 写与跨平台文件锁
+- 结构化日志（stdout + 文件）与按 ADR-006 三档规则实现的密钥脱敏
+- 本地安全边界：仅监听 `127.0.0.1`、CORS 白名单、1 MiB 请求体上限
+- Vue 3 前端请求层（统一 `ApiError`）、路由、Pinia store 与应用壳；首页展示 `backend: ok`
+- `scripts/check.py` 一键验收（含改动范围 / 禁用写法门禁），GitHub Actions CI 已接通
 - 需求草案、后续任务拆解与架构决策（`docs/requirements.md`、`docs/task-plan.md`、`docs/decisions.md`）
 
 规划中：
@@ -66,18 +68,21 @@ flowchart LR
 
 - Python ≥ 3.12，包管理使用 [uv](https://docs.astral.sh/uv/)
 - Node.js `^22.18.0 || >=24.12.0`，包管理使用 pnpm（CI 使用 9.x）
-- 当前骨架无需数据库，健康检查不依赖外部服务
+- 首次启动会自动创建 SQLite 索引与日志目录，无需手工建库
 
 ### 1. 启动后端
 
 ```bash
 cd backend
 uv sync --locked
-uv run uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
+- 只监听回环地址 `127.0.0.1`，不提供局域网 / 远程访问。
+- 启动时创建 `<数据目录>/db/app.sqlite3` 与 `<数据目录>/logs/`，数据目录见「本地数据目录」。
 - 健康检查：<http://127.0.0.1:8000/api/health> → `{"status":"ok"}`
 - 接口文档：<http://127.0.0.1:8000/docs>
+- 删除 `<数据目录>/db/app.sqlite3` 后重启会自动重建，不需要迁移命令。
 
 ### 2. 启动前端
 
@@ -107,13 +112,46 @@ uv run python scripts/check.py
 
 **退出码为 0 是唯一的完成信号。**
 
+## 本地数据目录
+
+数据根目录按 [ADR-007](docs/decisions.md) 解析，应用启动时自动创建；目录已存在时不会重复创建或清空。
+
+| 平台 | 数据根目录 |
+|---|---|
+| Windows | `%LOCALAPPDATA%\CC-Roster` |
+| macOS | `~/Library/Application Support/CC-Roster` |
+| Linux | `${XDG_DATA_HOME:-$HOME/.local/share}/cc-roster` |
+
+当前使用的位置：
+
+| 路径 | 内容 | 删除后的影响 |
+|---|---|---|
+| `db/app.sqlite3` | SQLite 索引与缓存（WAL 模式，`user_version` 幂等迁移） | 可删除，重启后自动重建；不影响工具配置与档案 |
+| `logs/app.log` | 应用日志（已脱敏） | 可删除，无影响 |
+
+后续任务会按 ADR-007 增加 `cache/`、`snapshots/`、`profiles.json`、`settings.json`、`secrets.json`；本阶段尚未创建这些路径。
+
+## 日志与脱敏
+
+- 日志同时写 stdout 与 `<数据目录>/logs/app.log`，每行包含 UTC ISO 8601 时间、级别、logger 名与消息。
+- 所有日志在输出前经过统一脱敏：`sk-...`、`Bearer ...`、`api_key=...` 等形态不会以明文出现。
+- 密钥脱敏按 ADR-006 三档长度规则：长度 ≤ 8 全部替换为 `****`；9～16 保留前 2 + `****` + 后 2；> 16 保留前 4 + `****` + 后 4。
+- 错误响应同样经过脱敏；未知异常只返回 500 `{"code": "INTERNAL_ERROR", "message": "服务器内部错误"}`，不包含 traceback、路径或异常原文。
+
+## 本地安全边界
+
+- 后端只监听回环地址 `127.0.0.1`，不对局域网暴露。
+- CORS 只放行 `http://localhost:5173` 与 `http://127.0.0.1:5173`；其他来源不会收到 `Access-Control-Allow-Origin`。
+- 请求体上限默认 1 MiB，超限返回 413 `{"code": "PAYLOAD_TOO_LARGE", "message": ...}`。
+- 业务错误统一为 `{code, message}`；404 / 405 / 参数校验失败也使用同一形状。
+
 ## 目录结构
 
 ```text
 .
 ├── backend/                 # FastAPI 服务
-│   ├── src/app/api/         # 路由（参考 health.py）
-│   ├── src/app/core/        # 配置等基础设施
+│   ├── src/app/api/         # 路由与全局异常处理器（参考 health.py）
+│   ├── src/app/core/        # 配置、时钟、路径、DB、原子写、文件锁、日志、脱敏
 │   └── tests/
 ├── frontend/                # Vue 3 前端
 │   └── src/

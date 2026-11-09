@@ -1,0 +1,30 @@
+# 统一换行符为 LF。
+#
+# 为什么需要这个文件：本仓库在 Windows 上开发，Windows 版 git 默认 core.autocrlf=true
+# 会把工作区 checkout 成 CRLF；而 WSL / Linux / CI 里的 git 默认不做转换，
+# 于是每个 CRLF 文件都会被判定为"已修改"——scripts/guards.py 的 scope 检查会因此
+# 报出一堆根本没动过的文件（.gitignore、AGENTS.md、LICENSE、rules/** ...
+# 实测一次报了 12 个）。
+# 声明 eol=lf 后，git 在两边都按 LF 存取，Windows 侧也不会再产生 CRLF 工作区，
+# 克隆到哪个系统上都是干净的。
+#
+# frontend/.gitattributes 是 Vue 脚手架自带的同样一行，这里补齐仓库根与 backend。
+* text=auto eol=lf
+
+# 二进制文件：禁止任何换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.pdf binary
+*.zip binary
+
+# 一旦将来出现只认 CRLF 的 Windows 脚本，取消注释并单独声明
+# *.bat  text eol=crlf
+# *.cmd  text eol=crlf
+# *.ps1  text eol=crlf
