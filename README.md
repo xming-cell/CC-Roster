@@ -16,7 +16,7 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 
 ## 当前状态
 
-**v0.0.1 · 基础设施阶段。** 任务卡 003（本地应用基础设施）已完成；001 / 002 已完成。
+**v0.0.1 · 基础设施阶段。** 任务卡 004（工具发现与只读配置）已完成；001–003 已完成。
 
 已落地：
 
@@ -25,13 +25,13 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 - 结构化日志（stdout + 文件）与按 ADR-006 三档规则实现的密钥脱敏
 - 本地安全边界：仅监听 `127.0.0.1`、CORS 白名单、1 MiB 请求体上限
 - Vue 3 前端请求层（统一 `ApiError`）、路由、Pinia store 与应用壳；首页展示 `backend: ok`
+- 工具发现（只读）：Claude Code / Codex CLI 适配器、`GET /api/tools`、`GET /api/tools/{tool_id}` 与前端 `/tools` 页面；密钥只返回脱敏预览，读取不写盘
 - `scripts/check.py` 一键验收（含改动范围 / 禁用写法门禁），GitHub Actions CI 已接通
 - 需求草案、后续任务拆解与架构决策（`docs/requirements.md`、`docs/task-plan.md`、`docs/decisions.md`）
 
 规划中：
 
-- 配置适配器：读取 Claude Code、Codex 等工具的配置
-- 配置面板：只读展示 → 可回滚写入
+- 配置写入：可回滚地修改工具配置
 - 在线聊天与 agent 会话
 
 ## 设计原则
@@ -48,8 +48,8 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 flowchart LR
     UI["Web / Tauri / VS Code"] --> API["localhost API<br/>FastAPI"]
     API --> H["GET /api/health<br/>已实现"]
-    API -. 规划 .-> AD["Adapters<br/>Claude / Codex / …"]
-    AD -. 规划 .-> CFG[("配置文件<br/>唯一真相源")]
+    API --> AD["Adapters<br/>Claude Code / Codex CLI<br/>已实现（只读）"]
+    AD --> CFG[("配置文件<br/>唯一真相源")]
     API -. 可重建 .-> DB[("本地索引")]
 ```
 
@@ -94,7 +94,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-打开 <http://localhost:5173>。Vite 会把 `/api` 代理到 `http://127.0.0.1:8000`，见 `frontend/vite.config.ts`。
+打开 <http://localhost:5173>。Vite 会把 `/api` 代理到 `http://127.0.0.1:8000`，见 `frontend/vite.config.ts`。工具发现页面在 <http://localhost:5173/tools>。
 
 ### 3. 一键验收
 
@@ -111,6 +111,56 @@ uv run python scripts/check.py
 3. 前端：类型检查、lint、Vitest
 
 **退出码为 0 是唯一的完成信号。**
+
+## 工具发现（只读）
+
+`GET /api/tools` 返回已安装工具与顶层 warnings，`GET /api/tools/{tool_id}` 返回单个工具；未知 ID 返回 404 `{code: "TOOL_NOT_FOUND", message}`。前端页面为 <http://localhost:5173/tools>，列表展示状态、供应商、模型，详情展示接口地址、第三方中转、脱敏密钥、最后修改时间、配置路径与 warnings。
+
+- 只读取用户级配置：Claude Code 的 `settings.json`（`CLAUDE_CONFIG_DIR`，默认 `~/.claude`）与 Codex CLI 的 `config.toml` + `auth.json`（`CODEX_HOME`，默认 `~/.codex`）；不读 OAuth / 登录凭据，不执行 CLI 子进程。
+- 读取全程只读：不修改配置文件、不生成临时文件；密钥只以 `has_secret` + 脱敏 `secret_preview` 返回。
+- 已安装判定：配置目录存在，或 `claude` / `codex` 在 `PATH` 中。只有可执行文件、没有配置时显示「未配置」。
+- 环境变量为空串时回退默认目录；相对路径按用户 home 解析。
+
+### 本地验收
+
+用临时目录避免碰到真实配置（Windows PowerShell）：
+
+```powershell
+$root = Join-Path $env:TEMP "cc-roster-acceptance"
+New-Item -ItemType Directory -Force "$root\claude", "$root\codex" | Out-Null
+@'
+{
+  "model": "claude-sonnet-4-5",
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
+    "ANTHROPIC_AUTH_TOKEN": "sk-your-key"
+  }
+}
+'@ | Set-Content "$root\claude\settings.json" -Encoding utf8
+
+$env:CLAUDE_CONFIG_DIR = "$root\claude"
+$env:CODEX_HOME = "$root\codex"
+cd backend
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+前端另开终端 `cd frontend && pnpm dev`，然后打开 <http://localhost:5173/tools>，或直接请求：
+
+```bash
+curl http://127.0.0.1:8000/api/tools
+curl http://127.0.0.1:8000/api/tools/claude-code
+curl -i http://127.0.0.1:8000/api/tools/not-a-tool   # 404 TOOL_NOT_FOUND
+```
+
+验收要点：Claude Code 显示正常、Codex CLI 显示未配置；把 `settings.json` 改坏一个字符后刷新，只有 Claude Code 变为异常并提示行 / 列；响应里只出现脱敏密钥；读取前后配置文件的 SHA-256 不变。
+
+bash / macOS / Linux 等价写法：
+
+```bash
+mkdir -p "$TMPDIR/cc-roster-acceptance/claude" "$TMPDIR/cc-roster-acceptance/codex"
+export CLAUDE_CONFIG_DIR="$TMPDIR/cc-roster-acceptance/claude"
+export CODEX_HOME="$TMPDIR/cc-roster-acceptance/codex"
+```
 
 ## 本地数据目录
 
@@ -151,6 +201,7 @@ uv run python scripts/check.py
 .
 ├── backend/                 # FastAPI 服务
 │   ├── src/app/api/         # 路由与全局异常处理器（参考 health.py）
+│   ├── src/app/adapters/    # Claude Code / Codex CLI 只读适配器与显式注册表
 │   ├── src/app/core/        # 配置、时钟、路径、DB、原子写、文件锁、日志、脱敏
 │   └── tests/
 ├── frontend/                # Vue 3 前端

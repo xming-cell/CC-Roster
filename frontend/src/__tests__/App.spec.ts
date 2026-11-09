@@ -4,6 +4,7 @@ import { createPinia } from 'pinia'
 
 import App from '../App.vue'
 import router from '../router'
+import { getByRole } from './dom'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return {
@@ -45,5 +46,25 @@ describe('App', () => {
 
     expect(wrapper.text()).toContain('backend: error')
     expect(wrapper.text()).toContain('无法连接后端服务')
+  })
+
+  it('links to the tools route and renders the tools view', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((path: string) =>
+        Promise.resolve(
+          jsonResponse(path === '/api/tools' ? { tools: [], warnings: [] } : { status: 'ok' }),
+        ),
+      ),
+    )
+    const wrapper = await mountApp()
+
+    const link = getByRole(wrapper, 'link', { name: '工具' })
+    expect(link.attributes('href')).toBe('/tools')
+
+    await router.push('/tools')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('未发现已安装的 AI 工具')
   })
 })
