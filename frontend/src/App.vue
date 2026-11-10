@@ -13,6 +13,7 @@ const fullBleed = computed(() => route.name === 'home')
       <nav class="app-header__nav">
         <RouterLink to="/">首页</RouterLink>
         <RouterLink to="/tools">工具</RouterLink>
+        <RouterLink to="/profiles">档案</RouterLink>
       </nav>
     </header>
     <main class="app-main" :class="{ 'app-main--full': fullBleed }">

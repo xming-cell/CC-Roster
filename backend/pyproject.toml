@@ -7,6 +7,8 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
+    # ADR-006: 跨平台 OS 凭据库, 避免明文落盘, 无需自研系统 API; 不可用时回退 0600 文件
+    "keyring>=25.7.0",
 ]
 
 [dependency-groups]

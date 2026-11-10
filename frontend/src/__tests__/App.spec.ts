@@ -49,6 +49,35 @@ describe('App', () => {
     expect(getByRole(wrapper, 'alert').text()).toContain('无法连接后端服务')
   })
 
+  it('links to the profiles route and renders the profiles view', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((path: string) =>
+        Promise.resolve(
+          jsonResponse(
+            path === '/api/profiles'
+              ? {
+                  profiles: [],
+                  bindings: [],
+                  secret_store: { backend: 'keyring', fallback: false, message: null },
+                  warnings: [],
+                }
+              : { tools: [], warnings: [] },
+          ),
+        ),
+      ),
+    )
+    const wrapper = await mountApp()
+
+    const link = getByRole(wrapper, 'link', { name: '档案' })
+    expect(link.attributes('href')).toBe('/profiles')
+
+    await router.push('/profiles')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('还没有档案')
+  })
+
   it('links to the tools route and renders the tools view', async () => {
     vi.stubGlobal(
       'fetch',

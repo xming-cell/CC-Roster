@@ -16,6 +16,11 @@ const ROLE_SELECTORS: Record<string, string> = {
   link: 'a[href]',
   alert: '[role="alert"]',
   status: '[role="status"]',
+  dialog: '[role="dialog"]',
+  textbox:
+    'input:not([type]), input[type="text"], input[type="url"], input[type="password"], textarea',
+  combobox: 'select',
+  checkbox: 'input[type="checkbox"]',
 }
 
 function onlyMatch(matches: DOMWrapper<Element>[], query: string): DOMWrapper<Element> {
@@ -62,6 +67,60 @@ export function getAllByRole(
     if (options.name === undefined) {
       return true
     }
-    return node.text().includes(options.name)
+    return accessibleName(node).includes(options.name)
   })
+}
+
+function accessibleName(node: DOMWrapper<Element>): string {
+  const element = node.element
+  const ariaLabel = element.getAttribute('aria-label')
+  if (ariaLabel !== null && ariaLabel.trim() !== '') {
+    return ariaLabel.trim()
+  }
+
+  const labelledBy = element.getAttribute('aria-labelledby')
+  if (labelledBy !== null) {
+    const text = labelledBy
+      .split(/\s+/)
+      .map((id) => queryInRoot(element, `#${id}`)?.textContent ?? '')
+      .join(' ')
+      .trim()
+    if (text !== '') {
+      return text
+    }
+  }
+
+  if (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLSelectElement ||
+    element instanceof HTMLTextAreaElement
+  ) {
+    if (element.id !== '') {
+      const label = queryInRoot(element, `label[for="${element.id}"]`)
+      const text = label?.textContent?.trim() ?? ''
+      if (text !== '') {
+        return text
+      }
+    }
+    const wrappingLabel = element.closest('label')
+    const text = wrappingLabel?.textContent?.trim() ?? ''
+    if (text !== '') {
+      return text
+    }
+    return element.getAttribute('placeholder') ?? ''
+  }
+
+  return node.text()
+}
+
+function queryInRoot(element: Element, selector: string): Element | null {
+  const root = element.getRootNode()
+  if (
+    root instanceof Document ||
+    root instanceof DocumentFragment ||
+    root instanceof Element
+  ) {
+    return root.querySelector(selector)
+  }
+  return null
 }

@@ -16,7 +16,7 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 
 ## 当前状态
 
-**v0.0.1 · 基础设施阶段。** 任务卡 005（微信式主界面骨架）已完成；001–004 已完成。
+**v0.0.1 · 基础设施阶段。** 任务卡 006（供应商档案与模型清单）已完成；001–005 已完成。
 
 已落地：
 
@@ -27,6 +27,7 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 - Vue 3 前端请求层（统一 `ApiError`）、路由、Pinia store 与应用壳；`/` 为微信式主界面：左侧好友列表、右侧详情 / 会话区骨架
 - 主界面视觉 token（`frontend/src/styles/tokens.css`）：颜色 / 字号 / 间距 / 圆角 / 头像 / 气泡，提供 `--friend-accent` / `--friend-avatar-bg` / `--bubble-*` 覆盖点
 - 工具发现（只读）：Claude Code / Codex CLI 适配器、`GET /api/tools`、`GET /api/tools/{tool_id}`、`/` 主界面与 `/tools` 过渡入口；密钥只返回脱敏预览，读取不写盘
+- 供应商档案：`/profiles` 管理页与 `/api/profiles`，档案 CRUD / 复制 / 模型清单 / 删除保护 / 工具绑定（只记录「工具 → 档案」选择，不写工具配置）；密钥优先存 OS 钥匙串，不可用时回退本机 `secrets.json`（Unix `0600`）
 - `scripts/check.py` 一键验收（含改动范围 / 禁用写法门禁），GitHub Actions CI 已接通
 - 需求草案、后续任务拆解与架构决策（`docs/requirements.md`、`docs/task-plan.md`、`docs/decisions.md`）
 
@@ -95,7 +96,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-打开 <http://localhost:5173> 即进入微信式主界面：左侧是已发现 AI 工具的好友列表，右侧显示选中工具的详情；`/tools` 保留为工具发现的过渡入口。Vite 会把 `/api` 代理到 `http://127.0.0.1:8000`，见 `frontend/vite.config.ts`。
+打开 <http://localhost:5173> 即进入微信式主界面：左侧是已发现 AI 工具的好友列表，右侧显示选中工具的详情；`/tools` 保留为工具发现的过渡入口，`/profiles` 是供应商档案管理页。Vite 会把 `/api` 代理到 `http://127.0.0.1:8000`，见 `frontend/vite.config.ts`。
 
 ### 3. 一键验收
 
@@ -175,6 +176,73 @@ export CLAUDE_CONFIG_DIR="$TMPDIR/cc-roster-acceptance/claude"
 export CODEX_HOME="$TMPDIR/cc-roster-acceptance/codex"
 ```
 
+## 供应商档案（`/profiles`）
+
+`/profiles` 管理可复用的供应商档案：一份档案由「名称 + 协议 + 接口地址 + 模型清单 + 密钥」组成，可绑定给多个工具，也可在多个档案之间切换。
+
+- **档案**：新建 / 编辑 / 复制 / 删除；名称大小写不敏感唯一；`base_url` 只接受绝对 `http(s)` 地址；模型清单可空，重复模型（去空白后完全相同）拒绝保存并指出重复项。
+- **密钥**：档案只保存 `secret_ref`，界面只显示 `secret_preview`（ADR-006 三档脱敏），没有查看 / 导出完整密钥的入口；编辑时密钥留空 = 保持，勾选「清除已保存的密钥」= 删除。
+- **绑定**：每个工具至多绑定一份档案；同一份档案可绑定 Claude Code 与 Codex CLI。绑定只写应用侧 `profiles.json`，**不写工具配置文件**，界面显示「已绑定，尚未应用（切换在 008 实现）」；解除绑定也不会回滚工具里已生效的配置。
+- **删除保护**：档案被任何工具绑定（含已卸载工具）时，未确认删除返回 409 `PROFILE_IN_USE` 并列出占用方；确认后同时删除档案、全部绑定与密钥。
+- **降级**：密钥引用存在但读不到时显示 `SECRET_MISSING` warning，列表继续可用；`profiles.json` 损坏或版本不支持时返回可读错误，且不覆盖原文件。
+
+### API
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/api/profiles` | 档案列表、绑定、密钥后端状态与 warnings |
+| `POST` | `/api/profiles` | 新建档案（201） |
+| `GET` | `/api/profiles/{profile_id}` | 档案详情 |
+| `PATCH` | `/api/profiles/{profile_id}` | 部分更新；省略 `secret` 保持、`null` 清除、字符串替换 |
+| `POST` | `/api/profiles/{profile_id}/copy` | 复制档案（201，不复制绑定） |
+| `DELETE` | `/api/profiles/{profile_id}?confirm=true` | 删除档案；未确认且被占用时 409 |
+| `PUT` | `/api/tools/{tool_id}/profile` | 绑定工具到档案（body `{profile_id}`） |
+| `DELETE` | `/api/tools/{tool_id}/profile` | 解除绑定；幂等，无绑定返回 `removed=false` |
+
+错误统一为 `{code, message}`，常见错误码：`PROFILE_NOT_FOUND`、`PROFILE_NAME_CONFLICT`、`PROFILE_IN_USE`、`PROFILE_STORE_UNREADABLE`、`PROFILE_STORE_VERSION_UNSUPPORTED`、`SECRET_STORE_ERROR`、`TOOL_NOT_FOUND`。
+
+### 密钥存储与回退
+
+- 默认 `CC_ROSTER_SECRET_BACKEND=auto`：优先 OS 钥匙串（Windows 凭据管理器 / macOS Keychain / Linux Secret Service，条目名 `cc-roster/<profile_id>`）；探测不到可用后端时回退 `<数据目录>/secrets.json`，Unix 权限 `0600`，界面显示非阻塞 banner。
+- `CC_ROSTER_SECRET_BACKEND=file`：强制使用本机文件，便于验收回退路径。
+- `CC_ROSTER_SECRET_BACKEND=keyring`：强制使用钥匙串；不可用时写入操作返回可读错误，不静默回退。
+- `secrets.json` 是**明文**文件，不是加密保险箱；使用文件回退时请限制目录访问权限，并避免把该文件提交到仓库或云盘。
+- 读取始终按档案里的 `SecretRef.backend` 路由，因此钥匙串恢复后仍能读取旧的 file 密钥。
+
+### 本地验收
+
+后端启动后打开 <http://localhost:5173/profiles>：
+
+1. 新建一份带密钥的档案并刷新：列表只显示脱敏预览；`profiles.json` 中只有 `secret_ref`，没有明文；Windows 可用 `cmdkey /list` 看到 `cc-roster/<profile_id>` 条目。
+2. 编辑档案，密钥留空保存（预览不变）；再勾选「清除已保存的密钥」保存（`has_secret=false`，钥匙串条目被删除）。
+3. 把同一份档案绑定到 Claude Code 与 Codex CLI：两处都显示「已绑定，尚未应用」，`used_by` 同时列出两个工具，工具配置文件不变。
+4. 重启后端再打开 `/profiles`：档案、模型清单、绑定与密钥状态全部保留。
+5. 删除被占用的档案：先取消（磁盘零变化），再确认（档案 / 绑定 / 密钥删除，工具配置不变）。
+6. 复制一份带密钥的档案：新 ID / 新名称，协议 / 地址 / 模型 / 密钥相同，不带绑定。
+7. 回退路径：`CC_ROSTER_SECRET_BACKEND=file` 启动后端，页面显示「系统钥匙串不可用，密钥保存在本机文件」banner；新建 / 编辑 / 删除密钥正常；Unix 下 `secrets.json` 权限为 `0600`。
+8. 损坏恢复：手工把 `profiles.json` 改坏后刷新，页面显示可读错误且不覆盖坏文件；恢复备份后列表正常。
+9. 键盘与窄窗口（约 320px）：Tab 可达、focus 可见、无横向滚动，dialog 可用键盘关闭 / 确认。
+
+也可直接请求：
+
+```bash
+curl http://127.0.0.1:8000/api/profiles
+curl -i -X POST http://127.0.0.1:8000/api/profiles \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Anthropic","protocol":"anthropic","base_url":"https://api.anthropic.com","secret":"sk-your-key"}'
+curl -X PUT http://127.0.0.1:8000/api/tools/claude-code/profile \
+  -H 'Content-Type: application/json' -d '{"profile_id":"<profile_id>"}'
+curl -i -X DELETE "http://127.0.0.1:8000/api/profiles/<profile_id>"   # 被占用时 409 PROFILE_IN_USE
+```
+
+PowerShell 下启动文件回退：
+
+```powershell
+$env:CC_ROSTER_SECRET_BACKEND = "file"
+cd backend
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
 ## 本地数据目录
 
 数据根目录按 [ADR-007](docs/decisions.md) 解析，应用启动时自动创建；目录已存在时不会重复创建或清空。
@@ -191,8 +259,17 @@ export CODEX_HOME="$TMPDIR/cc-roster-acceptance/codex"
 |---|---|---|
 | `db/app.sqlite3` | SQLite 索引与缓存（WAL 模式，`user_version` 幂等迁移） | 可删除，重启后自动重建；不影响工具配置与档案 |
 | `logs/app.log` | 应用日志（已脱敏） | 可删除，无影响 |
+| `profiles.json` | 供应商档案与工具绑定（用户数据；原子写 + 文件锁） | 档案与绑定丢失；工具里已生效的配置不受影响；**请备份** |
+| `secrets.json` | 仅在 OS 钥匙串不可用或 `CC_ROSTER_SECRET_BACKEND=file` 时创建的密钥回退（明文，Unix `0600`） | 回退密钥丢失，界面显示 `SECRET_MISSING`；钥匙串中的密钥不受影响 |
+| `profiles.lock` / `secrets.lock` | 写操作的文件锁 | 无影响，可删除；不需要备份 |
 
-后续任务会按 ADR-007 增加 `cache/`、`snapshots/`、`profiles.json`、`settings.json`、`secrets.json`；本阶段尚未创建这些路径。
+后续任务会按 ADR-007 增加 `cache/`、`snapshots/`、`settings.json`；本阶段尚未创建这些路径。
+
+### 备份与恢复
+
+- 备份用户数据：停止应用（或确保没有正在进行的写操作）后复制 `profiles.json`；如果使用文件密钥回退，连同 `secrets.json` 一起复制。
+- `secrets.json` 是明文密钥文件，备份 / 迁移时要像对待密码一样保管；使用 OS 钥匙串时密钥不在数据目录，备份 `profiles.json` 不会复制密钥，换机后需重新录入。
+- 恢复：把文件放回数据目录后重启即可。`profiles.json` 损坏时应用返回可读错误且**不会覆盖原文件**，恢复备份后重新打开 `/profiles`。
 
 ## 日志与脱敏
 
@@ -214,6 +291,9 @@ export CODEX_HOME="$TMPDIR/cc-roster-acceptance/codex"
 .
 ├── backend/                 # FastAPI 服务
 │   ├── src/app/api/         # 路由与全局异常处理器（参考 health.py）
+│   ├── src/app/services/    # 业务规则（工具发现、档案编排）
+│   ├── src/app/repositories/ # profiles.json 仓储与 SecretStore
+│   ├── src/app/schemas/     # Pydantic 输入 / 输出模型
 │   ├── src/app/adapters/    # Claude Code / Codex CLI 只读适配器与显式注册表
 │   ├── src/app/core/        # 配置、时钟、路径、DB、原子写、文件锁、日志、脱敏
 │   └── tests/
