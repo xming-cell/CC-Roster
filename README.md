@@ -16,7 +16,7 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 
 ## 当前状态
 
-**v0.0.1 · 基础设施阶段。** 任务卡 004（工具发现与只读配置）已完成；001–003 已完成。
+**v0.0.1 · 基础设施阶段。** 任务卡 005（微信式主界面骨架）已完成；001–004 已完成。
 
 已落地：
 
@@ -24,8 +24,9 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 - 跨平台数据目录、SQLite 索引（WAL + `user_version` 幂等迁移）、原子 JSON 写与跨平台文件锁
 - 结构化日志（stdout + 文件）与按 ADR-006 三档规则实现的密钥脱敏
 - 本地安全边界：仅监听 `127.0.0.1`、CORS 白名单、1 MiB 请求体上限
-- Vue 3 前端请求层（统一 `ApiError`）、路由、Pinia store 与应用壳；首页展示 `backend: ok`
-- 工具发现（只读）：Claude Code / Codex CLI 适配器、`GET /api/tools`、`GET /api/tools/{tool_id}` 与前端 `/tools` 页面；密钥只返回脱敏预览，读取不写盘
+- Vue 3 前端请求层（统一 `ApiError`）、路由、Pinia store 与应用壳；`/` 为微信式主界面：左侧好友列表、右侧详情 / 会话区骨架
+- 主界面视觉 token（`frontend/src/styles/tokens.css`）：颜色 / 字号 / 间距 / 圆角 / 头像 / 气泡，提供 `--friend-accent` / `--friend-avatar-bg` / `--bubble-*` 覆盖点
+- 工具发现（只读）：Claude Code / Codex CLI 适配器、`GET /api/tools`、`GET /api/tools/{tool_id}`、`/` 主界面与 `/tools` 过渡入口；密钥只返回脱敏预览，读取不写盘
 - `scripts/check.py` 一键验收（含改动范围 / 禁用写法门禁），GitHub Actions CI 已接通
 - 需求草案、后续任务拆解与架构决策（`docs/requirements.md`、`docs/task-plan.md`、`docs/decisions.md`）
 
@@ -94,7 +95,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-打开 <http://localhost:5173>。Vite 会把 `/api` 代理到 `http://127.0.0.1:8000`，见 `frontend/vite.config.ts`。工具发现页面在 <http://localhost:5173/tools>。
+打开 <http://localhost:5173> 即进入微信式主界面：左侧是已发现 AI 工具的好友列表，右侧显示选中工具的详情；`/tools` 保留为工具发现的过渡入口。Vite 会把 `/api` 代理到 `http://127.0.0.1:8000`，见 `frontend/vite.config.ts`。
 
 ### 3. 一键验收
 
@@ -111,6 +112,18 @@ uv run python scripts/check.py
 3. 前端：类型检查、lint、Vitest
 
 **退出码为 0 是唯一的完成信号。**
+
+## 主界面（微信式骨架）
+
+`/` 是打开即见的微信式主界面，数据来自 `GET /api/tools`：
+
+- **好友 = 已安装的 AI 工具**（ADR-002）。左侧列表每行含头像位、名称、一行状态描述与四态徽章（正常 / 未配置 / 异常 / 检测中），按 `last_modified` 降序排列，时间缺失或非法排最后，同值按名称 / ID 稳定排序。
+- 点击好友后，右侧显示名称、状态与 004 的只读配置详情（供应商、模型、接口地址、第三方中转、脱敏密钥、最后修改时间、配置路径与 warnings）；未选中时显示「选择一个 AI 查看详情」。会话时间线容器已预留，本阶段不渲染会话内容。
+- 无工具时显示「还没有发现任何 AI 工具」与「怎么装」静态指引（Claude Code / Codex CLI，不发网络请求）；部分工具失败时其他好友照常展示，全局 warnings 可折叠查看。
+- 首屏先渲染骨架与「检测中」，初始失败给出可读错误与「重试」；刷新失败保留旧列表并给出非阻塞提示。
+- 键盘可用：Tab 可达、Enter / Space 选中、focus 可见；窗口窄于 768px 时改为单列，无横向滚动。
+
+`/tools` 保留为工具发现的过渡入口，行为与 004 一致，后续卡片会逐步并入主界面。
 
 ## 工具发现（只读）
 
@@ -144,7 +157,7 @@ cd backend
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-前端另开终端 `cd frontend && pnpm dev`，然后打开 <http://localhost:5173/tools>，或直接请求：
+前端另开终端 `cd frontend && pnpm dev`，然后打开 <http://localhost:5173> 查看主界面，或打开 <http://localhost:5173/tools> 查看工具发现过渡入口；也可直接请求：
 
 ```bash
 curl http://127.0.0.1:8000/api/tools

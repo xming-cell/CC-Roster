@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { computed } from 'vue'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
+
+const route = useRoute()
+const fullBleed = computed(() => route.name === 'home')
 </script>
 
 <template>
@@ -11,7 +15,7 @@ import { RouterLink, RouterView } from 'vue-router'
         <RouterLink to="/tools">工具</RouterLink>
       </nav>
     </header>
-    <main class="app-main">
+    <main class="app-main" :class="{ 'app-main--full': fullBleed }">
       <RouterView />
     </main>
   </div>
@@ -19,17 +23,20 @@ import { RouterLink, RouterView } from 'vue-router'
 
 <style scoped>
 .app-shell {
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
 }
 
 .app-header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
-  gap: 1.5rem;
-  border-bottom: 1px solid #e4e7ec;
-  padding: 0.75rem 1.5rem;
+  gap: var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-surface);
 }
 
 .app-header__brand {
@@ -38,7 +45,7 @@ import { RouterLink, RouterView } from 'vue-router'
 
 .app-header__nav {
   display: flex;
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
 .app-header__nav a {
@@ -47,12 +54,20 @@ import { RouterLink, RouterView } from 'vue-router'
 }
 
 .app-header__nav a.router-link-active {
-  color: #175cd3;
+  color: var(--color-accent);
   font-weight: 600;
 }
 
 .app-main {
   flex: 1;
-  padding: 1.5rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-5);
+}
+
+.app-main--full {
+  display: flex;
+  overflow: hidden;
+  padding: 0;
 }
 </style>

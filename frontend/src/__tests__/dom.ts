@@ -48,12 +48,20 @@ export function getByRole(
   role: string,
   options: { name?: string } = {},
 ): DOMWrapper<Element> {
+  const matches = getAllByRole(wrapper, role, options)
+  return onlyMatch(matches, `role=${role} name="${options.name ?? '*'}"`)
+}
+
+export function getAllByRole(
+  wrapper: ElementQuery,
+  role: string,
+  options: { name?: string } = {},
+): DOMWrapper<Element>[] {
   const selector = ROLE_SELECTORS[role] ?? `[role="${role}"]`
-  const matches = wrapper.findAll(selector).filter((node) => {
+  return wrapper.findAll(selector).filter((node) => {
     if (options.name === undefined) {
       return true
     }
     return node.text().includes(options.name)
   })
-  return onlyMatch(matches, `role=${role} name="${options.name ?? '*'}"`)
 }

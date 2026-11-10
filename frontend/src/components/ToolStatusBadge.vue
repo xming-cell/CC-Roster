@@ -14,7 +14,7 @@ const labels: Record<BadgeStatus, string> = {
   error: '异常',
 }
 
-const label = computed(() => labels[props.status])
+const label = computed(() => labels[props.status] ?? '异常')
 </script>
 
 <template>
@@ -24,30 +24,30 @@ const label = computed(() => labels[props.status])
 <style scoped>
 .status-badge {
   display: inline-block;
-  border-radius: 999px;
-  padding: 0.125rem 0.5rem;
-  font-size: 0.75rem;
-  line-height: 1.5;
+  border-radius: var(--radius-full);
+  padding: 0.125rem var(--space-2);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-base);
   white-space: nowrap;
 }
 
 .status-badge--loading {
-  background: #eef2f6;
-  color: #475467;
+  background: var(--status-loading-bg);
+  color: var(--status-loading-fg);
 }
 
 .status-badge--ok {
-  background: #e7f6ec;
-  color: #05603a;
+  background: var(--status-ok-bg);
+  color: var(--status-ok-fg);
 }
 
 .status-badge--unconfigured {
-  background: #fef0c7;
-  color: #93370d;
+  background: var(--status-unconfigured-bg);
+  color: var(--status-unconfigured-fg);
 }
 
 .status-badge--error {
-  background: #fee4e2;
-  color: #b42318;
+  background: var(--status-error-bg);
+  color: var(--status-error-fg);
 }
 </style>

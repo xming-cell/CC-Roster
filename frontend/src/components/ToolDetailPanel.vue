@@ -6,6 +6,7 @@ defineProps<{
   tool: ToolView | null
   loading: boolean
   error: string | null
+  embedded?: boolean
 }>()
 
 function thirdPartyLabel(value: boolean | null | undefined): string {
@@ -35,13 +36,18 @@ function formatLastModified(value: string | null): string {
 </script>
 
 <template>
-  <section class="detail" aria-labelledby="tool-detail-title">
-    <h2 id="tool-detail-title">工具详情</h2>
+  <section
+    class="detail"
+    :class="{ 'detail--embedded': embedded }"
+    :aria-label="embedded ? 'AI 详情' : undefined"
+    :aria-labelledby="embedded ? undefined : 'tool-detail-title'"
+  >
+    <h2 v-if="!embedded" id="tool-detail-title">工具详情</h2>
 
     <p v-if="loading" role="status">正在读取详情…</p>
     <p v-else-if="error !== null" role="alert">{{ error }}</p>
     <template v-else-if="tool !== null">
-      <h3>{{ tool.display_name }}</h3>
+      <h3 v-if="!embedded">{{ tool.display_name }}</h3>
       <dl class="detail__fields">
         <dt>状态</dt>
         <dd><ToolStatusBadge :status="tool.status" /></dd>
@@ -75,20 +81,25 @@ function formatLastModified(value: string | null): string {
 
 <style scoped>
 .detail {
-  border: 1px solid #e4e7ec;
-  border-radius: 0.5rem;
-  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.detail--embedded {
+  border: 0;
+  padding: 0;
 }
 
 .detail__fields {
   display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.5rem 1rem;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
   margin: 0;
 }
 
 .detail__fields dt {
-  color: #475467;
+  color: var(--color-text-secondary);
 }
 
 .detail__fields dd {
@@ -100,7 +111,7 @@ function formatLastModified(value: string | null): string {
 }
 
 .detail__warnings {
-  margin-top: 1rem;
-  color: #b42318;
+  margin-top: var(--space-4);
+  color: var(--color-danger);
 }
 </style>

@@ -1,0 +1,98 @@
+:root {
+  /* 颜色 */
+  --color-bg: #f2f3f5;
+  --color-surface: #ffffff;
+  --color-sidebar-bg: #f2f3f5;
+  --color-text: #1d2129;
+  --color-text-secondary: #475467;
+  --color-border: #e4e7ec;
+  --color-surface-hover: #e8eaed;
+  --color-accent: #175cd3;
+  --color-accent-soft: #eff4ff;
+  --color-danger: #b42318;
+
+  --status-loading-bg: #eef2f6;
+  --status-loading-fg: #475467;
+  --status-ok-bg: #e7f6ec;
+  --status-ok-fg: #05603a;
+  --status-unconfigured-bg: #fef0c7;
+  --status-unconfigured-fg: #93370d;
+  --status-error-bg: #fee4e2;
+  --status-error-fg: #b42318;
+
+  /* 字号 */
+  --font-family-base:
+    'Inter', 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.25rem;
+  --font-size-xl: 1.5rem;
+  --line-height-base: 1.5;
+
+  /* 间距 */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+
+  /* 圆角 */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-full: 999px;
+
+  /* 布局与头像 */
+  --sidebar-width: 20rem;
+  --avatar-size: 2.75rem;
+  --avatar-radius: var(--radius-md);
+  --avatar-tone-0: #5b6ee1;
+  --avatar-tone-1: #0e7490;
+  --avatar-tone-2: #7a5af8;
+  --avatar-tone-3: #b54708;
+  --avatar-tone-4: #087443;
+  --avatar-tone-5: #c11574;
+
+  /* F-09 覆盖点：好友主题色与头像 */
+  --friend-accent: var(--color-accent);
+  --friend-accent-soft: var(--color-accent-soft);
+  --friend-avatar-bg: var(--avatar-tone-1);
+  --friend-avatar-fg: #ffffff;
+
+  /* 012 / 014 覆盖点：会话气泡 */
+  --bubble-bg: #95ec69;
+  --bubble-fg: #111827;
+  --bubble-radius: var(--radius-md);
+  --bubble-padding: 0.5rem 0.75rem;
+  --bubble-max-width: 70%;
+  --bubble-incoming-bg: var(--color-surface);
+  --bubble-outgoing-bg: var(--bubble-bg);
+  --bubble-time-color: var(--color-text-secondary);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-base);
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
+button {
+  font-family: inherit;
+}

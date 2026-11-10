@@ -1,26 +1,242 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 
-import { useAppStore } from '../stores/app'
+import DetailSkeleton from '../components/DetailSkeleton.vue'
+import EmptyTools from '../components/EmptyTools.vue'
+import FriendList from '../components/FriendList.vue'
+import GlobalWarnings from '../components/GlobalWarnings.vue'
+import ToolDetailPanel from '../components/ToolDetailPanel.vue'
+import ToolStatusBadge from '../components/ToolStatusBadge.vue'
+import { useToolsStore } from '../stores/tools'
+import { normalizeStatus } from '../utils/tools'
 
-const store = useAppStore()
-const { backendStatus, backendError } = storeToRefs(store)
+const store = useToolsStore()
+const {
+  sortedTools,
+  warnings,
+  loading,
+  error,
+  refreshError,
+  selectedToolId,
+  selectedTool,
+  detailLoading,
+  detailError,
+} = storeToRefs(store)
+
+const initialLoading = computed(
+  () => loading.value && sortedTools.value.length === 0 && error.value === null,
+)
+
+const selectedSummary = computed(() => {
+  if (selectedToolId.value === null) {
+    return null
+  }
+  return sortedTools.value.find((tool) => tool.id === selectedToolId.value) ?? null
+})
+
+const headerTool = computed(() => selectedTool.value ?? selectedSummary.value)
+const headerStatus = computed(() =>
+  headerTool.value === null ? null : normalizeStatus(headerTool.value.status),
+)
+
+function selectTool(toolId: string): void {
+  void store.selectTool(toolId)
+}
 
 onMounted(() => {
-  void store.checkBackend()
+  void store.fetchTools()
 })
 </script>
 
 <template>
-  <section class="home">
-    <p>backend: {{ backendStatus }}</p>
-    <p v-if="backendError" class="home__error">{{ backendError }}</p>
-  </section>
+  <div class="home">
+    <aside class="home__sidebar" aria-label="AI 好友">
+      <header class="home__sidebar-header">
+        <h1 class="home__title">AI 伙伴</h1>
+        <button
+          type="button"
+          class="home__refresh"
+          :disabled="loading"
+          @click="store.fetchTools()"
+        >
+          刷新
+        </button>
+      </header>
+
+      <GlobalWarnings v-if="warnings.length > 0" :warnings="warnings" />
+
+      <p v-if="refreshError !== null" class="home__refresh-error" role="status">
+        刷新失败，当前显示上次结果：{{ refreshError }}
+      </p>
+
+      <FriendList
+        :tools="sortedTools"
+        :loading="loading"
+        :error="error"
+        :selected-id="selectedToolId"
+        @select="selectTool"
+        @retry="store.fetchTools()"
+      />
+    </aside>
+
+    <section class="home__detail" aria-label="详情与会话">
+      <DetailSkeleton v-if="initialLoading" />
+      <p v-else-if="error !== null" class="home__placeholder">工具列表加载失败，请重试</p>
+      <EmptyTools v-else-if="sortedTools.length === 0" />
+      <template v-else-if="headerTool !== null">
+        <header class="home__detail-header">
+          <h2 class="home__detail-name">{{ headerTool.display_name }}</h2>
+          <ToolStatusBadge v-if="headerStatus !== null" :status="headerStatus" />
+        </header>
+
+        <div class="home__detail-body">
+          <ToolDetailPanel
+            :tool="selectedTool"
+            :loading="detailLoading"
+            :error="detailError"
+            embedded
+          />
+          <!-- 012 / 014 的会话时间线容器；本卡不渲染会话内容 -->
+          <section class="home__timeline" aria-label="会话时间线"></section>
+        </div>
+      </template>
+
+      <p v-else class="home__placeholder">选择一个 AI 查看详情</p>
+    </section>
+  </div>
 </template>
 
 <style scoped>
-.home__error {
-  color: #b42318;
+.home {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--color-surface);
+}
+
+.home__sidebar {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  width: var(--sidebar-width);
+  min-height: 0;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-sidebar-bg);
+}
+
+.home__sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.home__title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.home__refresh {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.home__refresh:hover:not(:disabled) {
+  color: var(--friend-accent);
+  border-color: var(--friend-accent);
+}
+
+.home__refresh:focus-visible {
+  outline: 2px solid var(--friend-accent);
+  outline-offset: 2px;
+}
+
+.home__refresh:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.home__refresh-error {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--status-error-bg);
+  color: var(--status-error-fg);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.home__detail {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.home__detail-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.home__detail-name {
+  overflow: hidden;
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home__detail-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.home__timeline {
+  flex: 1;
+  min-height: var(--space-6);
+}
+
+.home__placeholder {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 767px) {
+  .home {
+    flex-direction: column;
+  }
+
+  .home__sidebar {
+    width: 100%;
+    max-height: 40vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .home__detail {
+    flex: 1;
+  }
 }
 </style>
