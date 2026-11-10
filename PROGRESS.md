@@ -15,6 +15,7 @@
 - 最近一次验收：005 T1–T7 完成后 `uv run python scripts/check.py` 全绿，完整输出见 `specs/005-wechat-shell/tasks.md`。004 的验收记录见 `specs/004-tool-discovery/tasks.md`。
 - 任务卡 005 已开卡（`specs/005-wechat-shell`，微信式主界面骨架）：`specs/CURRENT` 已指向 005，开卡决策见 `specs/005-wechat-shell/spec.md`。用户确认：`/` 改为微信式主界面、`/tools` 保留为过渡入口、排序先用 `last_modified` 代理、本卡只改前端。因 `/` 行为变更，`App.spec.ts` 中两条 health 断言将同步更新——这是行为变更导致的断言调整，不是为让测试变绿（AGENTS.md 第 4 条）。
 - 005 T1–T3 完成（只改前端）：新增 `styles/tokens.css` 并由 `main.ts` 引入（颜色 / 字号 / 间距 / 圆角 / 头像 / 气泡 token，含 `--friend-accent` / `--friend-avatar-bg` / `--bubble-*` 覆盖点）；新增 `utils/tools.ts`（`last_modified` 降序、null / 非法时间排最后、同值按 `display_name` / `id` 的双键排序，状态描述与未知状态兜底）；新增 `FriendList` / `FriendListItem` / `FriendAvatar`，`HomeView` 重写为左侧好友列表 + 右侧详情 / 会话区骨架（顶部名称 + 徽章、复用 `ToolDetailPanel`、未选中空状态、预留时间线容器）；`stores/tools.ts` 增加 latest-wins 请求序号，刷新后按 ID 保留选中、条目消失时清除；`ToolDetailPanel` 增加 `embedded` 可选属性（默认行为不变），`ToolsView` 与 `ToolsView.spec.ts` 未改。`App.spec.ts` 两条 `/` 的 health 断言已改为「主界面壳 + 工具接口失败可读错误」：`/` 不再展示 health 文案是 005 的既定行为变更，`GET /api/health` 与 `stores/app.ts` 保留供后续卡使用，不是为让测试变绿。
+- 任务卡 006 已开卡（`specs/006-profiles`，供应商档案与模型清单）：`specs/CURRENT` 已指向 006。开卡决策：绑定不校验协议兼容性（用户确认；协议适配由 008 预览 / 应用时拦截，界面标注「已绑定，尚未应用」）；密钥按 ADR-006 引入 `keyring` + 0600 文件回退；档案与绑定落 `profiles.json`（不随索引 / 缓存 / 日志删除）；前端新增 `/profiles`；模型清单允许为空但拒绝重复；档案可先不设密钥；删除被占用档案需确认并列出占用方。尚未改业务代码。
 
 ## 下一个可执行命令
 
@@ -29,7 +30,9 @@ uv run python scripts/check.py
 2. 把 `specs/CURRENT` 改成 `NNN`（不改则 `guard scope` 会跳过范围校验）；
 3. 只动 scope 内的文件，做完把 check.py 输出贴进 `tasks.md`。
 
-卡片状态：`specs/003-local-infra`、`specs/004-tool-discovery`（004 — 工具发现与只读配置，T1–T8）、`specs/005-wechat-shell`（005 — 微信式主界面骨架，T1–T7）均已完成；`specs/CURRENT` 指向 005。开下一张卡时按上面的固定动作建目录、改 `specs/CURRENT`。
+当前下一张：`specs/006-profiles` 从 T1 开始；实现前先跑 `check.py` 确认基线。
+
+卡片状态：`specs/003-local-infra`、`specs/004-tool-discovery`（004 — 工具发现与只读配置，T1–T8）、`specs/005-wechat-shell`（005 — 微信式主界面骨架，T1–T7）均已完成；`specs/006-profiles`（006 — 供应商档案与模型清单，T1–T7）已开卡、待实现；`specs/CURRENT` 指向 006。开下一张卡时按上面的固定动作建目录、改 `specs/CURRENT`。
 
 ## 已知坑
 
