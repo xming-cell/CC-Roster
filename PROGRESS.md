@@ -25,6 +25,7 @@
 
 - 任务卡 007 已开卡（`specs/007-snapshot-kernel`，快照与回滚内核）：`specs/CURRENT` 已指向 007。开卡决策：只做后端内核（快照模型 / 内容寻址分块存储 / 保留策略 / 写引擎 / 冲突检测 / 快照列表·详情·pin·回滚 API / 审计），不做 adapter `plan` / `render` / `verify` 接线、apply / preview 端点与前端；JSON 用区间替换，TOML 引入 `tomlkit`（理由与 lock 同卡），自定义 `KEY=VALUE` 用行编辑；快照 blob 存原始字节但严格隔离（Unix 0700 / 0600，API / 日志 / diff / 审计不出现明文，不提供下载）；外部改动观察值随 008 的预览计划传递，不改 004 的只读 GET；保留策略按工具默认 20 份、`CC_ROSTER_SNAPSHOT_RETENTION` 可配、pin 不清理；回滚先自动快照当前状态，多文件失败全部还原。007 的详细 DoD / scope / 边界见 `specs/007-snapshot-kernel/spec.md`，任务拆分见同目录 `tasks.md`。开卡后 `uv run python scripts/check.py` 全绿（292 个后端测试、50 个前端测试），`guard scope` 已按 007 的 5 条路径规则放行。
 - 007 T1–T3 完成（只改后端内核）：T1 新增 `app/schemas/snapshot.py`（`Snapshot` / `SnapshotFile` / `SnapshotFileSource` / `SnapshotChange` / `FileObservation` 与只含 hash 的视图，校验规范 UUID4、绝对路径、chunk 数与大小一致性、缺失 / 空文件语义；变更展示值构造时 `redact_text` 并按 200 字符截断）与 `app/repositories/snapshots.py`（`snapshots/<id>/meta.json` + `objects/<sha256[:2]>/<sha256>`，默认 1 MiB 可注入分块、块 / 整文件双重 hash、跨快照去重、空文件与缺失文件、meta / 对象原子写、Unix 0700 / 0600、UUID 防穿越、列表对坏 meta / 未知版本降级为 warning、详情与读取前校验所有 chunk 与整文件 hash、锁超时 503）；`app/core/atomic.py` 新增 `write_bytes_atomic`（保留已有权限、新文件 0600、失败清理临时文件）。T2 在 `app/core/config.py` 增加 `snapshot_retention`（`CC_ROSTER_SNAPSHOT_RETENTION`，默认 20，1–1000），仓储按 `tool_id` 保留最近 N 份快照，pin / unpin 幂等且不改 `created_at` / 不复制块，回滚目标可用 `protected_ids` 跳过本次清理，删除快照后按剩余 meta 引用回收孤儿对象，其他工具或其他快照仍引用的对象不删。T3 新增 `app/core/file_observation.py`（`observe_file` 解析 symlink、只读且缺失返回 `exists=false`；`detect_conflicts` / `ensure_observations_current` 区分 MISSING / CREATED / CONTENT_CHANGED，仅 mtime 变化不冲突）与 `app/core/errors.py` 的结构化 `FileConflict` / `WriteConflict`（409，消息脱敏）。测试新增 `test_snapshot_models.py` / `test_snapshot_store.py` / `test_snapshot_retention.py` / `test_file_observation.py` 并扩充 `test_atomic.py` / `test_config.py`，覆盖分块边界、空 / 缺失文件、去重、坏 meta / 未知版本 / 篡改块、路径穿越、保留 / pin / 跨工具隔离 / 对象引用计数、三类冲突与并发写。
+- 任务卡 008 已开卡（`specs/008-switch-preview`，一键切换与改动预览）：`specs/CURRENT` 已指向 008。用户确认四项开卡决策：档案密钥写入工具配置（预览 / API / 日志 / 错误 / 审计 / 快照 `meta.json` 全部脱敏，快照原始 blob 可能含旧密钥但不提供下载）；Claude Code 只接受 `anthropic`、Codex CLI 只接受 `openai`，不匹配即 blocker 且零写入；模型默认档案清单第一项、预览可选清单内其余项、清单为空保持工具当前模型；切换 / 快照 UI 放主界面详情，`/profiles` 的绑定面板只修正已应用 / 未应用状态，不复制切换 UI。技术决策：预览无状态（文件观察值 + `preview_digest`）、apply 重算并比对、绑定保存失败自动回滚、`ErrorResponse` 增加可选 `details`（旧 `{code, message}` 形状不变）、Codex 用内置 `openai` provider 覆盖（真实 CLI 行为 T8 手动验收）、不新增依赖。008 的 DoD / scope / 边界见 `specs/008-switch-preview/spec.md`，任务拆分见同目录 `tasks.md`；开卡只改 `specs/**` 与 `PROGRESS.md`。
 - 007 T4–T7 完成（后端内核 + README）：T4 `WriteEngine.apply` 在 `<data>/locks/write.lock` 内完成冲突检查 → 预快照 → 按路径排序逐文件 `write_bytes_atomic` → 回读逐字节校验 → 审计；多文件任一写入 / 回读 / 最终观察失败都用同一份预快照还原全部源文件并再次校验，还原失败返回 `WRITE_RESTORE_FAILED`，审计失败还原后返回 `AUDIT_WRITE_FAILED`，锁超时 503。T5 新增 `app/core/format_edits.py`：JSON 自写扫描器记录值区间，只替换目标值 / 追加 / 删除成员并保留缩进 / CRLF / BOM / Unicode；TOML 走 `tomlkit.parse` + `dumps` 保留注释 / 键序 / 未知字段（新增 `tomlkit>=0.13`，理由见 `pyproject.toml`，`uv.lock` 已同步）；`KEY=VALUE` 行编辑保留注释 / 引号 / `=` 两侧空格；重复键 / 非法格式 / 非 UTF-8 → `UNSAFE_WRITE`，`verify_rendered` 在语义不符时返回 `WRITE_VERIFY_FAILED`。T6 新增 `SnapshotService` 与 `app/api/snapshots.py`（列表 / 详情 / `PATCH` pin / `POST .../rollback`），回滚先完整校验目标 chunk，再生成 `reason=rollback` 预快照（目标 ID 受保护），逐文件恢复 / 删除并回读，失败用预快照还原；响应只含路径 / hash / 大小 / 时间 / 脱敏变更，无 chunk 与内容下载。T7 新增 `APP_MIGRATIONS` v1 `audit_entries` 与 `AuditRepository`（文件 / 字段 / 消息全部 `redact_text`），`initialize_app_data` 应用迁移；README 补快照布局、保留策略、API、回滚语义、安全边界与 curl 验收；`test_audit.py` 覆盖迁移幂等 / 删库重建 / 记录查询 / 脱敏 / 写失败，`test_write_engine.py`、`test_format_edits.py`、`test_snapshots_api.py` 覆盖失败注入、逐字节 fixture、404 / 422 / 损坏 / 空库 / limit / 多次回滚 / 回滚逐字节。真实临时目录 + uvicorn/curl 手动验收 6 项全过（快照可见、回读失败还原、冲突拒绝、回滚 hash 一致、pin 超限保留且无孤儿对象、删 DB 后快照仍可回滚），结果见 `specs/007-snapshot-kernel/tasks.md`。`uv run python scripts/check.py` 全绿（455 个后端测试、50 个前端测试），完整输出已贴入同文件「验收记录」。
 
 ## 下一个可执行命令
@@ -40,9 +41,9 @@ uv run python scripts/check.py
 2. 把 `specs/CURRENT` 改成 `NNN`（不改则 `guard scope` 会跳过范围校验）；
 3. 只动 scope 内的文件，做完把 check.py 输出贴进 `tasks.md`。
 
-当前任务卡：007「快照与回滚内核」（`specs/007-snapshot-kernel`），`specs/CURRENT` 已指向 007；T1–T7 全部完成。下一步需先开 008 卡（adapter `plan` / `render` / `verify` 接线、preview / apply 端点与前端），本卡不暴露 apply / preview。
+当前任务卡：008「一键切换与改动预览」（`specs/008-switch-preview`），`specs/CURRENT` 已指向 008；T1–T8 待做。从 T1 适配器写契约（`plan` / `render` / `verify`）开始，先读 `spec.md` 的开卡决策、DoD 与边界。
 
-卡片状态：001–007 均已完成；`specs/CURRENT` 仍指向 007，等 008 任务卡创建后切换。
+卡片状态：001–007 均已完成；008 已开卡待实现。
 
 ## 已知坑
 
@@ -57,5 +58,6 @@ uv run python scripts/check.py
 ## 未决问题
 
 - 前端 e2e（Playwright）尚未接入 `check.py`。
-- 007 只交付内核，不暴露 apply / preview 端点；写引擎与格式助手尚未接到 adapter，等 008 开卡。
+- 008 尚未实现；Codex 新版本是否仍读取 `auth.json`、OAuth 登录态是否优先，需要 T8 用真实 CLI 验收确认，若不符先改映射再继续。
+- 008 会改变两个 004 适配器的 `capabilities.write` / `write_mode` 与 `/profiles` 的「尚未应用」文案；相关既有断言必须同步更新，理由实现时写进本文件（行为变更，不是为让测试变绿）。
 - `guard forbidden` 目前不拦"注释掉的断言"，这个规则仍靠人看 diff。
