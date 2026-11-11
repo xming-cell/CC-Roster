@@ -16,7 +16,7 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 
 ## 当前状态
 
-**v0.0.1 · 基础设施阶段。** 任务卡 006（供应商档案与模型清单）已完成；001–005 已完成。
+**v0.0.1 · 基础设施阶段。** 任务卡 007（快照与回滚内核）已完成；001–006 已完成。
 
 已落地：
 
@@ -28,12 +28,13 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 - 主界面视觉 token（`frontend/src/styles/tokens.css`）：颜色 / 字号 / 间距 / 圆角 / 头像 / 气泡，提供 `--friend-accent` / `--friend-avatar-bg` / `--bubble-*` 覆盖点
 - 工具发现（只读）：Claude Code / Codex CLI 适配器、`GET /api/tools`、`GET /api/tools/{tool_id}`、`/` 主界面与 `/tools` 过渡入口；密钥只返回脱敏预览，读取不写盘
 - 供应商档案：`/profiles` 管理页与 `/api/profiles`，档案 CRUD / 复制 / 模型清单 / 删除保护 / 工具绑定（只记录「工具 → 档案」选择，不写工具配置）；密钥优先存 OS 钥匙串，不可用时回退本机 `secrets.json`（Unix `0600`）
+- 快照与回滚内核：内容寻址分块存储、按工具的保留策略与 pin、外部改动检测、保真编辑助手、原子写引擎（写锁 / 预快照 / 回读校验 / 失败还原）、`/api/snapshots` 列表 · 详情 · pin · 回滚、`audit_entries` 审计；本卡不暴露 apply / preview 端点
 - `scripts/check.py` 一键验收（含改动范围 / 禁用写法门禁），GitHub Actions CI 已接通
 - 需求草案、后续任务拆解与架构决策（`docs/requirements.md`、`docs/task-plan.md`、`docs/decisions.md`）
 
 规划中：
 
-- 配置写入：可回滚地修改工具配置
+- 配置写入接线：008 消费本卡内核，提供 preview / apply 端点与界面
 - 在线聊天与 agent 会话
 
 ## 设计原则
@@ -59,7 +60,7 @@ flowchart LR
 
 | 层 | 技术 |
 |---|---|
-| 后端 | Python 3.12 · FastAPI · Pydantic v2 · uv |
+| 后端 | Python 3.12 · FastAPI · Pydantic v2 · tomlkit · uv |
 | 前端 | Vue 3 · TypeScript · Vite · Pinia · Vue Router · pnpm |
 | 质量 | Ruff · mypy · pytest · Oxlint / ESLint · vue-tsc · Vitest |
 | CI | GitHub Actions |
@@ -243,6 +244,82 @@ cd backend
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
+## 快照与回滚内核
+
+007 交付的是后端内核：任何一次配置写入在落盘前先捕获快照，写入后逐字节回读校验；失败时用同一份预快照还原全部文件。本卡**不暴露** apply / preview 端点，写引擎与格式助手由 008 接线；当前可用的只有快照查询、pin 与回滚 API。
+
+### 存储布局
+
+```text
+<数据目录>/snapshots/
+├── .lock                                  # 捕获 / pin / 清理的文件锁
+├── objects/<sha256 前 2 位>/<完整 sha256>  # 内容块, 跨快照去重
+└── <snapshot_id>/meta.json                # schema_version / tool_id / profile_id /
+                                            # created_at / reason / pinned / files / changes
+```
+
+- 文件按默认 1 MiB 分块，每个块与整文件都记录 SHA-256；空文件和「快照时不存在」分开建模。
+- `meta.json` 原子替换，崩溃不会留下半截 JSON；`objects/` 按内容寻址，只有最后一个引用消失后才回收。
+- 捕获 / pin / 清理在 `snapshots/.lock` 内串行化；写引擎与回滚另持有 `<数据目录>/locks/write.lock`。
+- Unix 下快照目录 `0700`、文件 `0600`；Windows 依赖用户目录 ACL。
+
+### 保留策略与 pin
+
+- `CC_ROSTER_SNAPSHOT_RETENTION` 配置每个工具保留的快照总数，默认 `20`，合法范围 `1–1000`；非法值启动即报错，不静默回退。
+- 每次捕获后，按 `tool_id` 独立删除最旧的未 pin 快照，直到总数不超过 N；`pinned=true` 的快照永不自动删除。全部快照都 pin 时允许超过 N。
+- `PATCH` pin / unpin 幂等，只重写 `meta.json`，不改变 `created_at`、不复制内容块。
+- 回滚前的预快照参与保留计算，但回滚目标本身受保护，不会在回滚过程中被清理；无法回收的对象会在清理时一并删除。
+
+### API
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/api/snapshots?tool_id=&limit=50` | 列表（`limit` 1–200）；返回 `snapshots`、`retention_limit`、`warnings` |
+| `GET` | `/api/snapshots/{snapshot_id}` | 详情；文件只含路径 / hash / 大小 / mtime / mode 与变更摘要 |
+| `PATCH` | `/api/snapshots/{snapshot_id}` | body `{"pinned": true|false}`，幂等 |
+| `POST` | `/api/snapshots/{snapshot_id}/rollback` | 回滚到该快照，返回预回滚快照 ID 与逐文件动作 |
+
+- 未知快照 → 404 `SNAPSHOT_NOT_FOUND`；非规范 UUID4 → 422 `VALIDATION_ERROR`；快照损坏 → 500 `SNAPSHOT_UNREADABLE`。
+- 列表遇到损坏的 `meta.json` 不整体失败：跳过该条并放进 `warnings`，其余快照照常返回。
+- 响应**绝不包含**原始内容、chunk 数据或明文密钥；没有快照内容下载端点。
+
+### 回滚语义
+
+1. 回滚先在写锁内完整读取并校验目标快照的所有块与整文件 hash；校验失败时**不写任何文件**。
+2. 为所有目标文件的当前状态生成 `reason=rollback` 的预回滚快照；目标快照 ID 受保留保护。
+3. 逐文件 `os.replace` 恢复：快照里存在的文件写回原字节（Unix 恢复原 mode），快照里不存在的文件删除。
+4. 全部写入后逐字节回读校验。任一失败用预回滚快照还原所有文件；还原失败返回 `ROLLBACK_FAILED`，绝不报告成功。
+5. 审计写入失败也会先还原文件，再返回 `AUDIT_WRITE_FAILED`。
+
+### 安全边界
+
+- 快照 blob 保存的是**原始字节**，其中可能包含 API key、token 或其它敏感值；这是回滚能力的代价。
+- 原始字节只允许留在 `snapshots/objects/` 内：API、日志、diff、审计、变更摘要都不输出明文。`SnapshotChange.before/after` 在构造时脱敏并截断，审计的文件 / 字段 / message 在落库前再次脱敏。
+- 不提供按快照下载 / 导出文件内容的接口；详情与列表只给 hash、大小、时间和脱敏变更。
+- 备份或迁移数据目录时，`snapshots/` 要按密钥材料对待；不要把数据目录提交到仓库、同步到公共云盘或发给他人。不需要历史回滚时可删除整个 `snapshots/`，工具配置不受影响。
+- 审计只存在 `db/app.sqlite3` 的 `audit_entries` 表；删除数据库会丢失审计索引（表会自动重建），但不会删除快照或工具配置。
+
+### 本地验收
+
+007 不暴露 apply 端点，写引擎的失败注入由测试覆盖：
+
+```bash
+cd backend
+uv run pytest tests/test_write_engine.py tests/test_snapshots_api.py -q
+```
+
+对已有快照的数据目录（008 接线后，或先用上面测试在临时目录生成）可直接用 curl：
+
+```bash
+curl http://127.0.0.1:8000/api/snapshots
+curl http://127.0.0.1:8000/api/snapshots/<snapshot_id>
+curl -X PATCH http://127.0.0.1:8000/api/snapshots/<snapshot_id> \
+  -H 'Content-Type: application/json' -d '{"pinned": true}'
+curl -X POST http://127.0.0.1:8000/api/snapshots/<snapshot_id>/rollback
+```
+
+验收要点：写入前出现快照且能看到文件 hash 与变更摘要；回读失败时目标文件恢复为写入前字节；外部改动后 apply 返回 `WRITE_CONFLICT` 且不覆盖；回滚后 `cmp` / `Get-FileHash` 与快照时一致并生成预回滚快照；pin 的最旧快照在超过保留上限后仍在，未 pin 的旧快照被清理；删除 `db/app.sqlite3` 重启后快照仍可列表 / 回滚，审计表自动重建。
+
 ## 本地数据目录
 
 数据根目录按 [ADR-007](docs/decisions.md) 解析，应用启动时自动创建；目录已存在时不会重复创建或清空。
@@ -257,17 +334,20 @@ uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 | 路径 | 内容 | 删除后的影响 |
 |---|---|---|
-| `db/app.sqlite3` | SQLite 索引与缓存（WAL 模式，`user_version` 幂等迁移） | 可删除，重启后自动重建；不影响工具配置与档案 |
+| `db/app.sqlite3` | SQLite 索引、缓存与 `audit_entries` 审计（WAL 模式，`user_version` 幂等迁移） | 可删除，重启后自动重建；丢失审计记录，不影响工具配置、档案与快照 |
 | `logs/app.log` | 应用日志（已脱敏） | 可删除，无影响 |
+| `snapshots/` | 快照 `meta.json`、内容寻址块 `objects/` 与 `.lock`（原始字节；Unix 目录 `0700` / 文件 `0600`） | 丢失历史回滚能力；工具配置与档案不受影响；**按密钥材料保管，不要提交 / 公开同步** |
+| `locks/write.lock` | 写引擎与回滚共用的写锁 | 无影响，可删除；不需要备份 |
 | `profiles.json` | 供应商档案与工具绑定（用户数据；原子写 + 文件锁） | 档案与绑定丢失；工具里已生效的配置不受影响；**请备份** |
 | `secrets.json` | 仅在 OS 钥匙串不可用或 `CC_ROSTER_SECRET_BACKEND=file` 时创建的密钥回退（明文，Unix `0600`） | 回退密钥丢失，界面显示 `SECRET_MISSING`；钥匙串中的密钥不受影响 |
 | `profiles.lock` / `secrets.lock` | 写操作的文件锁 | 无影响，可删除；不需要备份 |
 
-后续任务会按 ADR-007 增加 `cache/`、`snapshots/`、`settings.json`；本阶段尚未创建这些路径。
+后续任务会按 ADR-007 增加 `cache/`、`settings.json`。
 
 ### 备份与恢复
 
 - 备份用户数据：停止应用（或确保没有正在进行的写操作）后复制 `profiles.json`；如果使用文件密钥回退，连同 `secrets.json` 一起复制。
+- **`snapshots/` 也可能含有明文密钥**（历史配置的原始字节）。需要保留回滚历史时，把整个 `snapshots/` 与 `profiles.json` / `secrets.json` 一样按密钥材料保管；否则可以排除它，只备份档案与密钥文件。
 - `secrets.json` 是明文密钥文件，备份 / 迁移时要像对待密码一样保管；使用 OS 钥匙串时密钥不在数据目录，备份 `profiles.json` 不会复制密钥，换机后需重新录入。
 - 恢复：把文件放回数据目录后重启即可。`profiles.json` 损坏时应用返回可读错误且**不会覆盖原文件**，恢复备份后重新打开 `/profiles`。
 
@@ -291,11 +371,11 @@ uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 .
 ├── backend/                 # FastAPI 服务
 │   ├── src/app/api/         # 路由与全局异常处理器（参考 health.py）
-│   ├── src/app/services/    # 业务规则（工具发现、档案编排）
-│   ├── src/app/repositories/ # profiles.json 仓储与 SecretStore
+│   ├── src/app/services/    # 业务规则（工具发现、档案编排、写引擎、快照回滚）
+│   ├── src/app/repositories/ # profiles.json / 快照 / 审计仓储与 SecretStore
 │   ├── src/app/schemas/     # Pydantic 输入 / 输出模型
 │   ├── src/app/adapters/    # Claude Code / Codex CLI 只读适配器与显式注册表
-│   ├── src/app/core/        # 配置、时钟、路径、DB、原子写、文件锁、日志、脱敏
+│   ├── src/app/core/        # 配置、路径、DB、原子写、锁、脱敏、格式保真编辑
 │   └── tests/
 ├── frontend/                # Vue 3 前端
 │   └── src/

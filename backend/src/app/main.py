@@ -8,12 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.error_handlers import register_exception_handlers
 from app.api.health import router as health_router
 from app.api.profiles import router as profiles_router
+from app.api.snapshots import router as snapshots_router
 from app.api.tools import router as tools_router
 from app.core.config import settings
 from app.core.db import bootstrap_database
 from app.core.logging import configure_logging
 from app.core.paths import ensure_data_dirs, resolve_data_dir
 from app.core.security import RequestBodyLimitMiddleware
+from app.repositories.migrations import APP_MIGRATIONS
 
 _ALLOWED_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 
@@ -21,7 +23,10 @@ _ALLOWED_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 def initialize_app_data(data_dir: PurePath) -> Path:
     """创建数据目录并 bootstrap SQLite; 重复调用幂等。"""
     root = ensure_data_dirs(data_dir)
-    bootstrap_database(root / "db" / "app.sqlite3").close()
+    bootstrap_database(
+        root / "db" / "app.sqlite3",
+        migrations=APP_MIGRATIONS,
+    ).close()
     return root
 
 
@@ -47,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(tools_router)
     app.include_router(profiles_router)
+    app.include_router(snapshots_router)
     return app
 
 

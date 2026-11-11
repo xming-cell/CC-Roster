@@ -17,6 +17,12 @@ class Settings(BaseSettings):
         default="auto",
         validation_alias="CC_ROSTER_SECRET_BACKEND",
     )
+    snapshot_retention: int = Field(
+        default=20,
+        ge=1,
+        le=1000,
+        validation_alias="CC_ROSTER_SNAPSHOT_RETENTION",
+    )
 
 
 settings = Settings()
