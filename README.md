@@ -16,7 +16,7 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 
 ## 当前状态
 
-**v0.0.1 · 基础设施阶段。** 任务卡 007（快照与回滚内核）已完成；001–006 已完成。
+**v0.0.1 · 基础设施阶段。** 任务卡 008（一键切换与改动预览）已完成；001–007 已完成。
 
 已落地：
 
@@ -26,16 +26,17 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 - 本地安全边界：仅监听 `127.0.0.1`、CORS 白名单、1 MiB 请求体上限
 - Vue 3 前端请求层（统一 `ApiError`）、路由、Pinia store 与应用壳；`/` 为微信式主界面：左侧好友列表、右侧详情 / 会话区骨架
 - 主界面视觉 token（`frontend/src/styles/tokens.css`）：颜色 / 字号 / 间距 / 圆角 / 头像 / 气泡，提供 `--friend-accent` / `--friend-avatar-bg` / `--bubble-*` 覆盖点
-- 工具发现（只读）：Claude Code / Codex CLI 适配器、`GET /api/tools`、`GET /api/tools/{tool_id}`、`/` 主界面与 `/tools` 过渡入口；密钥只返回脱敏预览，读取不写盘
-- 供应商档案：`/profiles` 管理页与 `/api/profiles`，档案 CRUD / 复制 / 模型清单 / 删除保护 / 工具绑定（只记录「工具 → 档案」选择，不写工具配置）；密钥优先存 OS 钥匙串，不可用时回退本机 `secrets.json`（Unix `0600`）
-- 快照与回滚内核：内容寻址分块存储、按工具的保留策略与 pin、外部改动检测、保真编辑助手、原子写引擎（写锁 / 预快照 / 回读校验 / 失败还原）、`/api/snapshots` 列表 · 详情 · pin · 回滚、`audit_entries` 审计；本卡不暴露 apply / preview 端点
+- 工具发现：Claude Code / Codex CLI 适配器、`GET /api/tools`、`GET /api/tools/{tool_id}`、`/` 主界面与 `/tools` 过渡入口；读取不写盘，008 起两个适配器声明 `write=true` / `write_mode="managed_fields"`，写入只发生在显式 apply；密钥只返回脱敏预览
+- 供应商档案：`/profiles` 管理页与 `/api/profiles`，档案 CRUD / 复制 / 模型清单 / 删除保护 / 工具绑定（绑定本身不写工具配置；显式应用后才写入并记录 `active` / `applied_at` / `snapshot_id`）；密钥优先存 OS 钥匙串，不可用时回退本机 `secrets.json`（Unix `0600`）
+- 快照与回滚内核：内容寻址分块存储、按工具的保留策略与 pin、外部改动检测、保真编辑助手、原子写引擎（写锁 / 预快照 / 回读校验 / 失败还原）、`/api/snapshots` 列表 · 详情 · pin · 回滚、`audit_entries` 审计
+- 一键切换与改动预览：`POST /api/switch/preview`（零写入）与 `/apply`（快照 → 原子写 → 回读 → 审计 → 绑定，失败自动还原）、`GET /api/audit`；主界面「切换档案」预览确认框与字段级 diff、「快照 / 回滚」面板；冲突 / 过期 digest / 权限 / 协议 / OAuth 等 blocker 与 warning 可读展示；密钥写入工具配置，API / 日志 / 错误 / 审计 / 快照 `meta.json` 全程脱敏
 - `scripts/check.py` 一键验收（含改动范围 / 禁用写法门禁），GitHub Actions CI 已接通
 - 需求草案、后续任务拆解与架构决策（`docs/requirements.md`、`docs/task-plan.md`、`docs/decisions.md`）
 
 规划中：
 
-- 配置写入接线：008 消费本卡内核，提供 preview / apply 端点与界面
 - 在线聊天与 agent 会话
+- 审计 UI、全局只读模式、健康体检等按 `docs/task-plan.md` 的后续任务卡推进
 
 ## 设计原则
 
@@ -51,7 +52,8 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 flowchart LR
     UI["Web / Tauri / VS Code"] --> API["localhost API<br/>FastAPI"]
     API --> H["GET /api/health<br/>已实现"]
-    API --> AD["Adapters<br/>Claude Code / Codex CLI<br/>已实现（只读）"]
+    API --> SW["switch preview / apply<br/>snapshots / audit<br/>已实现"]
+    API --> AD["Adapters<br/>Claude Code / Codex CLI<br/>已实现（读 / 受控写）"]
     AD --> CFG[("配置文件<br/>唯一真相源")]
     API -. 可重建 .-> DB[("本地索引")]
 ```
@@ -97,7 +99,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-打开 <http://localhost:5173> 即进入微信式主界面：左侧是已发现 AI 工具的好友列表，右侧显示选中工具的详情；`/tools` 保留为工具发现的过渡入口，`/profiles` 是供应商档案管理页。Vite 会把 `/api` 代理到 `http://127.0.0.1:8000`，见 `frontend/vite.config.ts`。
+打开 <http://localhost:5173> 即进入微信式主界面：左侧是已发现 AI 工具的好友列表，右侧显示选中工具的详情、「切换档案」预览应用区与「快照 / 回滚」区；`/tools` 保留为工具发现的过渡入口，`/profiles` 是供应商档案管理页。Vite 会把 `/api` 代理到 `http://127.0.0.1:8000`，见 `frontend/vite.config.ts`。
 
 ### 3. 一键验收
 
@@ -121,6 +123,7 @@ uv run python scripts/check.py
 
 - **好友 = 已安装的 AI 工具**（ADR-002）。左侧列表每行含头像位、名称、一行状态描述与四态徽章（正常 / 未配置 / 异常 / 检测中），按 `last_modified` 降序排列，时间缺失或非法排最后，同值按名称 / ID 稳定排序。
 - 点击好友后，右侧显示名称、状态与 004 的只读配置详情（供应商、模型、接口地址、第三方中转、脱敏密钥、最后修改时间、配置路径与 warnings）；未选中时显示「选择一个 AI 查看详情」。会话时间线容器已预留，本阶段不渲染会话内容。
+- 详情内还有「切换档案」与「快照 / 回滚」：切换区选择档案 / 模型、预览逐字段改动并确认应用；快照区列出快照、pin / unpin 与确认回滚。应用成功后刷新工具详情、档案绑定与快照列表，并显示快照 ID 与重启要求；`/profiles` 的绑定状态同步显示「已应用」「尚未应用」或「档案已修改，需重新应用」。
 - 无工具时显示「还没有发现任何 AI 工具」与「怎么装」静态指引（Claude Code / Codex CLI，不发网络请求）；部分工具失败时其他好友照常展示，全局 warnings 可折叠查看。
 - 首屏先渲染骨架与「检测中」，初始失败给出可读错误与「重试」；刷新失败保留旧列表并给出非阻塞提示。
 - 键盘可用：Tab 可达、Enter / Space 选中、focus 可见；窗口窄于 768px 时改为单列，无横向滚动。
@@ -133,6 +136,7 @@ uv run python scripts/check.py
 
 - 只读取用户级配置：Claude Code 的 `settings.json`（`CLAUDE_CONFIG_DIR`，默认 `~/.claude`）与 Codex CLI 的 `config.toml` + `auth.json`（`CODEX_HOME`，默认 `~/.codex`）；不读 OAuth / 登录凭据，不执行 CLI 子进程。
 - 读取全程只读：不修改配置文件、不生成临时文件；密钥只以 `has_secret` + 脱敏 `secret_preview` 返回。
+- 008 起两个适配器的 `capabilities.write=true`、`write_mode="managed_fields"`；`GET /api/tools` 仍然只读，写入只通过显式的 `POST /api/switch/apply`。
 - 已安装判定：配置目录存在，或 `claude` / `codex` 在 `PATH` 中。只有可执行文件、没有配置时显示「未配置」。
 - 环境变量为空串时回退默认目录；相对路径按用户 home 解析。
 
@@ -183,7 +187,7 @@ export CODEX_HOME="$TMPDIR/cc-roster-acceptance/codex"
 
 - **档案**：新建 / 编辑 / 复制 / 删除；名称大小写不敏感唯一；`base_url` 只接受绝对 `http(s)` 地址；模型清单可空，重复模型（去空白后完全相同）拒绝保存并指出重复项。
 - **密钥**：档案只保存 `secret_ref`，界面只显示 `secret_preview`（ADR-006 三档脱敏），没有查看 / 导出完整密钥的入口；编辑时密钥留空 = 保持，勾选「清除已保存的密钥」= 删除。
-- **绑定**：每个工具至多绑定一份档案；同一份档案可绑定 Claude Code 与 Codex CLI。绑定只写应用侧 `profiles.json`，**不写工具配置文件**，界面显示「已绑定，尚未应用（切换在 008 实现）」；解除绑定也不会回滚工具里已生效的配置。
+- **绑定**：每个工具至多绑定一份档案；同一份档案可绑定 Claude Code 与 Codex CLI。绑定只写应用侧 `profiles.json`，**不写工具配置文件**，界面显示「已绑定，尚未应用」；在主界面应用成功后显示「已应用（时间，快照 ID）」，档案 `updated_at` 晚于 `applied_at` 时显示「档案已修改，需重新应用」。解除绑定也不会回滚工具里已生效的配置。
 - **删除保护**：档案被任何工具绑定（含已卸载工具）时，未确认删除返回 409 `PROFILE_IN_USE` 并列出占用方；确认后同时删除档案、全部绑定与密钥。
 - **降级**：密钥引用存在但读不到时显示 `SECRET_MISSING` warning，列表继续可用；`profiles.json` 损坏或版本不支持时返回可读错误，且不覆盖原文件。
 
@@ -216,7 +220,7 @@ export CODEX_HOME="$TMPDIR/cc-roster-acceptance/codex"
 
 1. 新建一份带密钥的档案并刷新：列表只显示脱敏预览；`profiles.json` 中只有 `secret_ref`，没有明文；Windows 可用 `cmdkey /list` 看到 `cc-roster/<profile_id>` 条目。
 2. 编辑档案，密钥留空保存（预览不变）；再勾选「清除已保存的密钥」保存（`has_secret=false`，钥匙串条目被删除）。
-3. 把同一份档案绑定到 Claude Code 与 Codex CLI：两处都显示「已绑定，尚未应用」，`used_by` 同时列出两个工具，工具配置文件不变。
+3. 把同一份档案绑定到 Claude Code 与 Codex CLI：两处都显示「已绑定，尚未应用」，`used_by` 同时列出两个工具，工具配置文件不变；到主界面应用后绑定变为「已应用（时间，快照 ID）」。
 4. 重启后端再打开 `/profiles`：档案、模型清单、绑定与密钥状态全部保留。
 5. 删除被占用的档案：先取消（磁盘零变化），再确认（档案 / 绑定 / 密钥删除，工具配置不变）。
 6. 复制一份带密钥的档案：新 ID / 新名称，协议 / 地址 / 模型 / 密钥相同，不带绑定。
@@ -244,9 +248,174 @@ cd backend
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
+## 一键切换与改动预览（008）
+
+主界面选中工具后，「切换档案」负责把某个供应商档案应用到工具配置，「快照 / 回滚」负责查看与恢复。核心原则：**预览零写入；应用必须可追溯、可回滚；失败不假成功。**
+
+### 流程
+
+1. 工具先绑定档案（在 `/profiles` 或切换区选择；绑定本身不写配置）。
+2. 点「预览改动」：服务端重新读取档案、密钥与目标文件，生成内存计划与逐字段 before / after；不建快照、不写审计、不创建目录。
+3. 确认框展示目标文件、字段级 diff、blockers / warnings 与重启提示；有 blocker 时不能确认。
+4. 确认应用时，前端原样回传预览的 `preview_digest` 与 `observations`。服务端重新生成计划，按「文件观察值 → digest → blockers」复核；任何一项不一致都拒绝写入。
+5. 通过后由 007 写引擎在写锁内预快照 → 逐文件原子写 → 回读校验 → 审计；随后把绑定标记为 `active=true` 并记录 `applied_at` / `snapshot_id`。
+6. 响应与界面显示快照 ID、逐文件结果与重启要求；绑定保存失败会用本次快照自动回滚，回滚也失败返回 `APPLY_ROLLBACK_FAILED`，绝不返回成功。
+
+### 字段映射
+
+| 工具 | 目标文件 | 托管字段 | 重启 |
+|---|---|---|---|
+| Claude Code | `<CLAUDE_CONFIG_DIR 或 ~/.claude>/settings.json` | `env.ANTHROPIC_BASE_URL`、模型（`env.ANTHROPIC_MODEL` 优先，其次顶层 `model`）、密钥（已有 `ANTHROPIC_AUTH_TOKEN` 优先，否则 `ANTHROPIC_API_KEY`） | Claude Code 需要重启后才会读取新的 `settings.json` |
+| Codex CLI | `<CODEX_HOME 或 ~/.codex>/config.toml` + `auth.json` | 顶层 `model`、`model_provider="openai"`、`[model_providers.openai]` 的 `name` / `base_url` / `wire_api`（官方 host 用 `responses`，第三方用 `chat`）、`auth.json.OPENAI_API_KEY` | Codex CLI 需要重启后才会读取新的 `config.toml` / `auth.json` |
+
+- Claude Code 只接受 `anthropic` 档案，Codex CLI 只接受 `openai` 档案；协议不匹配是 blocker，零写入。
+- Claude Code 的模型优先更新已有 `env.ANTHROPIC_MODEL`，其次顶层 `model`；凭证优先更新已有 `env.ANTHROPIC_AUTH_TOKEN`，其次 `env.ANTHROPIC_API_KEY`（两者同时存在时更新 `AUTH_TOKEN` 并删除 `API_KEY`）。两种凭证都不存在时，官方 host 写 `ANTHROPIC_API_KEY`，第三方写 `ANTHROPIC_AUTH_TOKEN`。
+- 模型默认档案清单第一项，可在预览中改选清单内其他项；清单为空时保持工具当前模型。
+- 只改托管字段；注释、键序、未知字段与其余内容逐字符保持不变。无法保证保真（重复键、非法 JSON / TOML、非 UTF-8、顶层类型不符等）时返回 blocker / `UNSAFE_WRITE`，不猜、不写。
+- Codex 的 `env_key` 已存在且不是 `OPENAI_API_KEY` 时返回 `ENV_KEY_CONFLICT` blocker；`auth.json` 里的 OAuth 字段原样保留并给 `OAUTH_AUTH_PRESENT` warning。
+- 档案没有密钥时不增删凭证字段，返回 `PROFILE_SECRET_EMPTY` warning（保留工具现有密钥 / 认证信息）。
+
+### API
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `POST` | `/api/switch/preview` | 只读预览；返回逐文件 hash / 大小 / 字段级变更、blockers / warnings、观察值、`preview_digest`、`can_apply` |
+| `POST` | `/api/switch/apply` | 应用；请求必须原样带上预览返回的 `preview_digest` 与 `observations` |
+| `GET` | `/api/audit?tool_id=&limit=50` | 审计列表（`limit` 1–200，默认 50）；只含路径 / 字段 / 结果 / 脱敏消息 |
+
+审计响应为 `{"entries": [...]}`，按时间倒序；每条含 `id` / `created_at` / `action`（apply / rollback）/ `tool_id` / `profile_id` / `snapshot_id` / `files` / `fields` / `result`（success / failed / conflict）/ `message`，不含文件原文或明文密钥。
+
+预览请求：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/switch/preview \
+  -H 'Content-Type: application/json' \
+  -d '{"tool_id":"claude-code","profile_id":"<profile_id>","model":"claude-sonnet-4-5"}'
+```
+
+响应要点（省略号为真实值）：
+
+```json
+{
+  "tool_id": "claude-code",
+  "profile_id": "...",
+  "model": "claude-sonnet-4-5",
+  "available_models": [{"id": "claude-sonnet-4-5", "display_name": null}],
+  "files": [{
+    "path": "/tmp/.../claude/settings.json",
+    "format": "json",
+    "action": "updated",
+    "before_sha256": "...",
+    "after_sha256": "...",
+    "before_size": 120,
+    "after_size": 140,
+    "changes": [{
+      "path": "/tmp/.../claude/settings.json",
+      "field": "env.ANTHROPIC_BASE_URL",
+      "action": "set",
+      "before": "https://api.anthropic.com",
+      "after": "https://relay.example.com"
+    }]
+  }],
+  "blockers": [],
+  "warnings": [],
+  "restart_required": true,
+  "restart_message": "Claude Code 需要重启后才会读取新的 settings.json",
+  "observations": [{"path": "/tmp/.../claude/settings.json", "exists": true, "sha256": "...", "size": 120, "mtime_ns": 1700000000000000000}],
+  "preview_digest": "...",
+  "can_apply": true
+}
+```
+
+应用请求把 `preview_digest` 与 `observations` 原样回传（不要手改观察值）。PowerShell 下可直接串联预览与应用：
+
+```powershell
+$preview = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/switch/preview `
+  -ContentType 'application/json' `
+  -Body '{"tool_id":"claude-code","profile_id":"<profile_id>","model":"claude-sonnet-4-5"}'
+
+$applyBody = @{
+  tool_id = 'claude-code'
+  profile_id = '<profile_id>'
+  model = 'claude-sonnet-4-5'
+  preview_digest = $preview.preview_digest
+  observations = $preview.observations
+} | ConvertTo-Json -Depth 10
+
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/switch/apply `
+  -ContentType 'application/json' -Body $applyBody
+```
+
+bash 下可用 `jq` 把预览响应的 `preview_digest` / `observations` 拼进 apply 请求。成功响应含 `snapshot_id`、`audit_id`、`files`（路径 / 动作 / hash / 大小）、`binding`（`active=true`、`applied_at`、`snapshot_id`）与 `restart_message`。
+
+错误与详情：
+
+| 状态 | 错误码 | 含义 |
+|---|---|---|
+| 404 | `TOOL_NOT_FOUND` / `PROFILE_NOT_FOUND` | 工具未安装 / 档案不存在 |
+| 409 | `SWITCH_BLOCKED` | 仍有 blocker（协议、权限、格式、`env_key` 等） |
+| 409 | `SWITCH_PREVIEW_STALE` | 预览后档案 / 模型 / 密钥变化；`details.stale_paths` 列出文件 |
+| 409 | `WRITE_CONFLICT` | 预览后文件被删除 / 新建 / 改内容；`details.conflicts` 含两边观察值，绝不覆盖 |
+| 422 | `SWITCH_MODEL_UNKNOWN` / `VALIDATION_ERROR` | 模型不在档案清单 / 请求形状非法 |
+| 500 | `WRITE_VERIFY_FAILED` / `WRITE_FAILED` / `WRITE_RESTORE_FAILED` / `AUDIT_WRITE_FAILED` / `BINDING_WRITE_FAILED` / `APPLY_ROLLBACK_FAILED` | 写入、回读、审计或绑定失败；已按预快照还原，未还原成功会明确返回 |
+| 503 | `WRITE_LOCK_TIMEOUT` / `PROFILE_STORE_LOCK_TIMEOUT` | 并发写锁 / 档案锁超时，可重试 |
+
+`WRITE_CONFLICT` 与 `SWITCH_PREVIEW_STALE` 的错误响应带可选 `details`；其他错误仍是 `{code, message}`。冲突**不自动合并**：界面保留确认框，显示冲突文件和原因，重新预览后才能再次应用。
+
+### 密钥与脱敏边界
+
+- 档案密钥会写入工具配置（Claude Code 的 `env` 或 Codex 的 `auth.json`），这是切换功能的目的；工具配置文件本身含明文是预期行为。
+- API 响应、预览 diff、日志、错误、审计、快照 `meta.json` 都不出现明文密钥；预览里的密钥字段显示脱敏后的旧值 / 新值。
+- 快照 blob 保存写入前原始字节，可能含旧密钥；不提供快照内容下载 / 导出接口，`snapshots/` 要按密钥材料保管（见「本地数据目录」）。
+- 审计只记录 `path.field`、快照 ID、结果与脱敏消息；`GET /api/audit` 不返回文件内容。
+
+### 前端入口
+
+- 主界面好友详情内：「切换档案」（档案 / 模型选择、预览、字段级 diff、blockers / warnings、重启提示、取消零请求、冲突后重新预览）与「快照 / 回滚」（列表、空状态、warnings、pin / unpin、确认回滚、回滚前快照 ID、恢复文件）。
+- 应用成功后自动刷新工具详情、档案绑定与快照列表；`/profiles` 的绑定面板显示「已应用（时间 / 快照 ID）」「已绑定，尚未应用」或「档案已修改，需重新应用」。
+- 键盘：Tab 可达，Enter / Space 触发，Esc 关闭预览 / 回滚确认框；窄屏 < 768px 单列。
+
+### 本地验收
+
+用临时目录，避免碰真实配置（bash / macOS / Linux；Windows PowerShell 见下）：
+
+```bash
+root="${TMPDIR:-/tmp}/cc-roster-switch"
+mkdir -p "$root/claude" "$root/codex"
+printf '%s\n' '{"model":"claude-sonnet-4-5","env":{"ANTHROPIC_BASE_URL":"https://api.anthropic.com","ANTHROPIC_AUTH_TOKEN":"sk-old"}}' > "$root/claude/settings.json"
+export CLAUDE_CONFIG_DIR="$root/claude"
+export CODEX_HOME="$root/codex"
+export CC_ROSTER_SECRET_BACKEND=file
+cd backend && uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+1. 在 `/profiles` 新建 `anthropic` 档案（`base_url` 如 `https://relay.example.com`，模型 `claude-sonnet-4-5`，密钥 `sk-new`），记下 `profile_id`。
+2. 记录 `settings.json` 的 SHA-256，调用预览，确认 `changes` 逐字段可见、密钥是脱敏值，且文件 hash、`snapshots/`、`audit_entries` 数量不变。
+3. 用预览返回的 `preview_digest` / `observations` 调用 apply，确认目标字段写入、其余字节不变、`snapshot_id` / `audit_id` / 绑定齐全、响应与日志无明文密钥。
+4. 预览后手工修改 `settings.json` 再 apply：应返回 409 `WRITE_CONFLICT`，文件不被覆盖；重新预览后可再次应用。
+5. 把 `settings.json` 设为只读（Windows 用 `attrib +r`，Unix 用 `chmod a-w`）后预览：应出现 blocker / 可读错误，apply 零写入。
+6. 应用后调用 `POST /api/snapshots/<snapshot_id>/rollback`（或界面回滚），确认生成回滚前快照，文件与 apply 前逐字节一致（`sha256sum` / `Get-FileHash`）。
+7. `GET /api/audit?tool_id=claude-code` 能看到 apply / 冲突 / 回滚记录；`GET /api/snapshots?tool_id=claude-code` 能看到快照与 pin 状态。
+8. 取消预览与回滚确认框，确认磁盘零变化；窄屏与键盘操作可用。
+
+Windows PowerShell 下等价命令：
+
+```powershell
+$root = Join-Path $env:TEMP "cc-roster-switch"
+New-Item -ItemType Directory -Force "$root\claude", "$root\codex" | Out-Null
+'{"model":"claude-sonnet-4-5","env":{"ANTHROPIC_BASE_URL":"https://api.anthropic.com","ANTHROPIC_AUTH_TOKEN":"sk-old"}}' |
+  Set-Content "$root\claude\settings.json" -Encoding utf8
+$env:CLAUDE_CONFIG_DIR = "$root\claude"
+$env:CODEX_HOME = "$root\codex"
+$env:CC_ROSTER_SECRET_BACKEND = "file"
+Get-FileHash "$root\claude\settings.json" -Algorithm SHA256
+```
+
+Codex 验收：在临时 `CODEX_HOME` 下预览 / 应用 `openai` 档案，检查 `config.toml` 的 `model` / `model_provider` / `[model_providers.openai]` 与 `auth.json.OPENAI_API_KEY`；再用该 `CODEX_HOME` 启动真实 Codex，确认读到所选 provider / model / key。若当前版本优先 OAuth 或忽略 `auth.json`，按实测记录并调整映射，不静默失败。
+
 ## 快照与回滚内核
 
-007 交付的是后端内核：任何一次配置写入在落盘前先捕获快照，写入后逐字节回读校验；失败时用同一份预快照还原全部文件。本卡**不暴露** apply / preview 端点，写引擎与格式助手由 008 接线；当前可用的只有快照查询、pin 与回滚 API。
+007 交付快照与写引擎内核；008 已把适配器的 `plan` / `render` / `verify` 与 preview / apply 端点接上。任何一次 apply 在落盘前先捕获快照，写入后逐字节回读校验；失败时用同一份预快照还原全部文件。快照查询、pin 与回滚 API 见下。
 
 ### 存储布局
 
@@ -301,14 +470,14 @@ uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 ### 本地验收
 
-007 不暴露 apply 端点，写引擎的失败注入由测试覆盖：
+写引擎的失败注入由测试覆盖；端到端 apply / 回滚见上一节「本地验收」：
 
 ```bash
 cd backend
 uv run pytest tests/test_write_engine.py tests/test_snapshots_api.py -q
 ```
 
-对已有快照的数据目录（008 接线后，或先用上面测试在临时目录生成）可直接用 curl：
+对已有快照的数据目录（执行过 apply 后）可直接用 curl：
 
 ```bash
 curl http://127.0.0.1:8000/api/snapshots
@@ -370,11 +539,11 @@ curl -X POST http://127.0.0.1:8000/api/snapshots/<snapshot_id>/rollback
 ```text
 .
 ├── backend/                 # FastAPI 服务
-│   ├── src/app/api/         # 路由与全局异常处理器（参考 health.py）
-│   ├── src/app/services/    # 业务规则（工具发现、档案编排、写引擎、快照回滚）
+│   ├── src/app/api/         # 路由与全局异常处理器（tools / profiles / switch / snapshots / audit）
+│   ├── src/app/services/    # 业务规则（工具发现、档案编排、切换编排、写引擎、快照回滚、审计）
 │   ├── src/app/repositories/ # profiles.json / 快照 / 审计仓储与 SecretStore
 │   ├── src/app/schemas/     # Pydantic 输入 / 输出模型
-│   ├── src/app/adapters/    # Claude Code / Codex CLI 只读适配器与显式注册表
+│   ├── src/app/adapters/    # Claude Code / Codex CLI 读写适配器、共享托管字段 helper 与显式注册表
 │   ├── src/app/core/        # 配置、路径、DB、原子写、锁、脱敏、格式保真编辑
 │   └── tests/
 ├── frontend/                # Vue 3 前端

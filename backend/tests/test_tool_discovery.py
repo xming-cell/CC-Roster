@@ -87,10 +87,10 @@ def test_configured_tool_view_exposes_managed_fields(tmp_path: Path) -> None:
     assert view.secret_preview == "sk-a****cdef"
     assert view.warnings == []
     assert view.capabilities.read is True
-    assert view.capabilities.write is False
+    assert view.capabilities.write is True
     assert view.capabilities.sessions is False
     assert view.capabilities.launch is False
-    assert view.capabilities.write_mode == "none"
+    assert view.capabilities.write_mode == "managed_fields"
 
 
 def test_broken_config_marks_only_that_tool_as_error(tmp_path: Path) -> None:

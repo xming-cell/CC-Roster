@@ -32,7 +32,20 @@ describe('App', () => {
   it('renders the home route with the friend list shell', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(jsonResponse({ tools: [], warnings: [] })),
+      vi.fn((path: string) =>
+        Promise.resolve(
+          jsonResponse(
+            path === '/api/profiles'
+              ? {
+                  profiles: [],
+                  bindings: [],
+                  secret_store: { backend: 'keyring', fallback: false, message: null },
+                  warnings: [],
+                }
+              : { tools: [], warnings: [] },
+          ),
+        ),
+      ),
     )
 
     const wrapper = await mountApp()

@@ -33,3 +33,11 @@ class AuditEntry(BaseModel):
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("审计时间必须带时区")
         return value
+
+
+class AuditListResponse(BaseModel):
+    """审计列表; 按时间倒序, 不含任何密钥或文件原文。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entries: list[AuditEntry] = Field(default_factory=list)

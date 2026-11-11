@@ -5,10 +5,12 @@ from pathlib import Path, PurePath
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.audit import router as audit_router
 from app.api.error_handlers import register_exception_handlers
 from app.api.health import router as health_router
 from app.api.profiles import router as profiles_router
 from app.api.snapshots import router as snapshots_router
+from app.api.switch import router as switch_router
 from app.api.tools import router as tools_router
 from app.core.config import settings
 from app.core.db import bootstrap_database
@@ -53,6 +55,8 @@ def create_app() -> FastAPI:
     app.include_router(tools_router)
     app.include_router(profiles_router)
     app.include_router(snapshots_router)
+    app.include_router(switch_router)
+    app.include_router(audit_router)
     return app
 
 

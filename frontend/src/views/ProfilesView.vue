@@ -135,7 +135,7 @@ async function bindTool(toolId: string, profileId: string): Promise<void> {
   bindingError.value = null
   try {
     await store.bind(toolId, profileId)
-    notice.value = '已绑定，尚未应用（切换在 008 实现）'
+    notice.value = '已绑定，尚未应用；在主界面详情中应用后生效'
   } catch (caught) {
     bindingError.value = messageOf(caught)
   } finally {

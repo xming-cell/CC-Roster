@@ -1,8 +1,9 @@
-"""Codex CLI 只读适配器。
+"""Codex CLI 适配器: 只读发现 + `config.toml` / `auth.json` 托管字段写入。
 
 读取 `config.toml` 的模型 / provider 与 `auth.json` 的 `OPENAI_API_KEY`。
 `env_key` 只提示密钥在环境变量中, 本应用绝不读取对应变量; `auth.json` 里的
-OAuth token 也不解析。
+OAuth token 也不解析、不修改。写映射由 008 定义: 用内置 `openai` provider
+覆盖托管字段, 其余内容与 OAuth 字段原样保留。
 """
 
 import shutil
@@ -10,7 +11,16 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.adapters.base import ToolCapabilities, ToolDetection, ToolReadResult, ToolWarning
+from app.adapters.base import (
+    ToolBlocker,
+    ToolCurrentFile,
+    ToolDetection,
+    ToolPlan,
+    ToolPlanFile,
+    ToolPlanWarning,
+    ToolReadResult,
+    ToolWarning,
+)
 from app.adapters.config_files import (
     WhichFn,
     file_last_modified,
@@ -23,7 +33,18 @@ from app.adapters.config_files import (
     string_field,
     table_field,
 )
+from app.adapters.managed_fields import (
+    MISSING,
+    ManagedFieldsAdapter,
+    PlanBuilder,
+    blocker_for_error,
+    display_value,
+    parse_json_object,
+    parse_toml_table,
+)
+from app.core.errors import AppError
 from app.core.redaction import redact_secret, redact_text
+from app.schemas.profile import Profile, ProfileProtocol
 
 _ID = "codex-cli"
 _DISPLAY_NAME = "Codex CLI"
@@ -36,6 +57,8 @@ _OFFICIAL_PROVIDER = "openai"
 _OFFICIAL_HOST = "api.openai.com"
 _OPENAI_DISPLAY_NAME = "OpenAI"
 _KNOWN_WIRE_APIS = frozenset({"chat", "responses"})
+_OPENAI_ENV_KEY = "OPENAI_API_KEY"
+_RESTART_MESSAGE = "Codex CLI 需要重启后才会读取新的 config.toml / auth.json"
 
 
 def resolve_codex_config_dir(*, environ: Mapping[str, str], home: Path) -> Path:
@@ -46,6 +69,10 @@ def resolve_codex_config_dir(*, environ: Mapping[str, str], home: Path) -> Path:
         env_var=_ENV_VAR,
         default_name=_DEFAULT_DIR,
     )
+
+
+def _unsafe_write(path: str, message: str) -> ToolBlocker:
+    return ToolBlocker(code="UNSAFE_WRITE", message=message, path=path)
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,10 +86,10 @@ class _CodexConfig:
     configured: bool = False
 
 
-class CodexCliAdapter:
+class CodexCliAdapter(ManagedFieldsAdapter):
     id = _ID
     display_name = _DISPLAY_NAME
-    capabilities = ToolCapabilities()
+    supported_protocols: tuple[ProfileProtocol, ...] = ("openai",)
 
     def __init__(self, config_dir: Path, *, which: WhichFn | None = None) -> None:
         self._config_dir = config_dir
@@ -97,6 +124,152 @@ class CodexCliAdapter:
             secret_preview=config.secret_preview,
             warnings=warnings,
         )
+
+    def plan(
+        self,
+        profile: Profile,
+        *,
+        secret: str | None,
+        model: str | None,
+        current: Mapping[str, ToolCurrentFile],
+    ) -> ToolPlan:
+        """把档案映射成 config.toml / auth.json 的字段编辑; 不写盘、不发网络请求。"""
+        config_file = current[str(self._config_file)]
+        auth_file = current[str(self._auth_file)]
+        files: list[ToolPlanFile] = []
+        blockers: list[ToolBlocker] = []
+        warnings: list[ToolPlanWarning] = []
+
+        config_plan = self._plan_config(profile, model=model, current_file=config_file)
+        if isinstance(config_plan, ToolBlocker):
+            blockers.append(config_plan)
+        else:
+            files.append(config_plan)
+
+        auth_plan = self._plan_auth(secret, current_file=auth_file, warnings=warnings)
+        if isinstance(auth_plan, ToolBlocker):
+            blockers.append(auth_plan)
+        elif auth_plan is not None:
+            files.append(auth_plan)
+
+        return ToolPlan(
+            files=files,
+            blockers=blockers,
+            warnings=warnings,
+            restart_required=True,
+            restart_message=_RESTART_MESSAGE,
+        )
+
+    @staticmethod
+    def _plan_config(
+        profile: Profile,
+        *,
+        model: str | None,
+        current_file: ToolCurrentFile,
+    ) -> ToolPlanFile | ToolBlocker:
+        try:
+            document = parse_toml_table(current_file.data)
+        except AppError as exc:
+            return blocker_for_error(exc, current_file.path)
+        if not schema_version_supported(document):
+            return ToolBlocker(
+                code="UNSUPPORTED_VERSION",
+                message="config.toml 的 schema_version 不受支持",
+                path=current_file.path,
+            )
+
+        raw_providers = document.get("model_providers", MISSING)
+        providers: Mapping[str, object]
+        if raw_providers is MISSING:
+            providers = {}
+        elif isinstance(raw_providers, Mapping):
+            providers = raw_providers
+        else:
+            return _unsafe_write(current_file.path, "config.toml 的 model_providers 不是表")
+
+        raw_openai = providers.get(_OFFICIAL_PROVIDER, MISSING)
+        openai: Mapping[str, object]
+        if raw_openai is MISSING:
+            openai = {}
+        elif isinstance(raw_openai, Mapping):
+            openai = raw_openai
+        else:
+            return _unsafe_write(
+                current_file.path,
+                "config.toml 的 model_providers.openai 不是表",
+            )
+
+        if "env_key" in openai and display_value(openai.get("env_key")) != _OPENAI_ENV_KEY:
+            return ToolBlocker(
+                code="ENV_KEY_CONFLICT",
+                message=(
+                    "model_providers.openai.env_key 不是 OPENAI_API_KEY, "
+                    "本应用无法保证新的密钥会被 Codex CLI 读取"
+                ),
+                path=current_file.path,
+            )
+
+        builder = PlanBuilder(current_file.path)
+        if model is not None:
+            builder.set(["model"], model, display_value(document.get("model")))
+        builder.set(
+            ["model_provider"],
+            _OFFICIAL_PROVIDER,
+            display_value(document.get("model_provider")),
+        )
+        builder.set(
+            ["model_providers", _OFFICIAL_PROVIDER, "name"],
+            profile.name,
+            display_value(openai.get("name")),
+        )
+        builder.set(
+            ["model_providers", _OFFICIAL_PROVIDER, "base_url"],
+            profile.base_url,
+            display_value(openai.get("base_url")),
+        )
+        official = is_third_party_base_url(profile.base_url, _OFFICIAL_HOST) is False
+        builder.set(
+            ["model_providers", _OFFICIAL_PROVIDER, "wire_api"],
+            "responses" if official else "chat",
+            display_value(openai.get("wire_api")),
+        )
+        return builder.build("toml")
+
+    @staticmethod
+    def _plan_auth(
+        secret: str | None,
+        *,
+        current_file: ToolCurrentFile,
+        warnings: list[ToolPlanWarning],
+    ) -> ToolPlanFile | ToolBlocker | None:
+        if secret is None:
+            warnings.append(
+                ToolPlanWarning(
+                    code="PROFILE_SECRET_EMPTY",
+                    message="档案没有密钥, 保留工具现有认证信息",
+                )
+            )
+            return None
+
+        try:
+            document = parse_json_object(current_file.data)
+        except AppError as exc:
+            return blocker_for_error(exc, current_file.path)
+        if "tokens" in document or "last_refresh" in document:
+            warnings.append(
+                ToolPlanWarning(
+                    code="OAUTH_AUTH_PRESENT",
+                    message="auth.json 含 OAuth 登录信息, 本次只覆盖 OPENAI_API_KEY",
+                )
+            )
+
+        builder = PlanBuilder(current_file.path)
+        builder.set_secret(
+            ["OPENAI_API_KEY"],
+            secret,
+            display_value(document.get("OPENAI_API_KEY")),
+        )
+        return builder.build("json")
 
     def _is_installed(self) -> bool:
         return self._config_dir.is_dir() or self._which(_EXECUTABLE) is not None

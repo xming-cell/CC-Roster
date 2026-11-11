@@ -104,6 +104,8 @@ function profilesBody(
   return { profiles, bindings, secret_store: secretStore, warnings }
 }
 
+const appliedSnapshotId = '44444444-4444-4444-8444-444444444444'
+
 function makeBinding(profileId: string, toolId = 'claude-code'): BindingView {
   return {
     tool_id: toolId,
@@ -112,6 +114,18 @@ function makeBinding(profileId: string, toolId = 'claude-code'): BindingView {
     active: false,
     applied_at: null,
     snapshot_id: null,
+  }
+}
+
+function makeAppliedBinding(
+  profileId: string,
+  toolId = 'claude-code',
+): BindingView {
+  return {
+    ...makeBinding(profileId, toolId),
+    active: true,
+    applied_at: '2026-11-10T13:00:00Z',
+    snapshot_id: appliedSnapshotId,
   }
 }
 
@@ -439,7 +453,7 @@ describe('ProfilesView', () => {
     expect(wrapper.text()).toContain('还没有档案')
   })
 
-  it('binds and unbinds a tool with an explicit not-applied label', async () => {
+  it('binds and unbinds a tool with a not-applied label', async () => {
     const profile = makeProfile()
     const tool = makeTool()
     let bindings: BindingView[] = []
@@ -469,14 +483,50 @@ describe('ProfilesView', () => {
     const put = requestCalls('PUT', '/api/tools/claude-code/profile')
     expect(put).toHaveLength(1)
     expect(put[0]?.body).toEqual({ profile_id: profile.id })
-    expect(wrapper.text()).toContain('已绑定，尚未应用（切换在 008 实现）')
+    expect(wrapper.text()).toContain('已绑定，尚未应用')
+    expect(wrapper.text()).toContain('在主界面详情中应用后生效')
 
     await getByRole(wrapper, 'button', { name: '解除 Claude Code 的绑定' }).trigger('click')
     await flushPromises()
 
     expect(requestCalls('DELETE', '/api/tools/claude-code/profile')).toHaveLength(1)
-    expect(wrapper.text()).not.toContain('已绑定，尚未应用（切换在 008 实现）')
+    expect(wrapper.text()).not.toContain('已绑定，尚未应用')
     expect(wrapper.text()).toContain('已解除绑定；工具里已生效的配置不会被回滚')
+  })
+
+  it('shows applied bindings with snapshot details and flags later profile edits', async () => {
+    const profile = makeProfile({ updated_at: '2026-11-11T12:00:00Z' })
+    installFetch((path) =>
+      jsonResponse(
+        path === '/api/profiles'
+          ? profilesBody([profile], [makeAppliedBinding(profile.id)])
+          : { tools: [makeTool()], warnings: [] },
+      ),
+    )
+    const wrapper = mountProfiles()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('已应用')
+    expect(wrapper.text()).toContain(`快照 ${appliedSnapshotId}`)
+    expect(wrapper.text()).toContain('档案已修改，需重新应用')
+    expect(wrapper.text()).not.toContain('已绑定，尚未应用')
+  })
+
+  it('does not flag a binding applied after the profile was last edited', async () => {
+    const profile = makeProfile({ updated_at: '2026-11-10T12:00:00Z' })
+    installFetch((path) =>
+      jsonResponse(
+        path === '/api/profiles'
+          ? profilesBody([profile], [makeAppliedBinding(profile.id)])
+          : { tools: [makeTool()], warnings: [] },
+      ),
+    )
+    const wrapper = mountProfiles()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('已应用')
+    expect(wrapper.text()).toContain(`快照 ${appliedSnapshotId}`)
+    expect(wrapper.text()).not.toContain('档案已修改，需重新应用')
   })
 
   it('lists uninstalled tools that still have bindings', async () => {

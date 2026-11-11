@@ -42,6 +42,39 @@ function submitBind(toolId: string): void {
     emit('bind', toolId, profileId)
   }
 }
+
+function appliedAtFor(toolId: string): string | null {
+  return bindingFor(toolId)?.applied_at ?? null
+}
+
+function snapshotIdFor(toolId: string): string | null {
+  return bindingFor(toolId)?.snapshot_id ?? null
+}
+
+function needsReapply(toolId: string): boolean {
+  const binding = bindingFor(toolId)
+  if (binding === undefined || binding.applied_at === null) {
+    return false
+  }
+  const profile = props.profiles.find((entry) => entry.id === binding.profile_id)
+  if (profile === undefined) {
+    return false
+  }
+  const applied = new Date(binding.applied_at).getTime()
+  const updated = new Date(profile.updated_at).getTime()
+  if (Number.isNaN(applied) || Number.isNaN(updated)) {
+    return false
+  }
+  return updated > applied
+}
+
+function formatTime(value: string): string {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+  return parsed.toLocaleString('zh-CN', { hour12: false })
+}
 </script>
 
 <template>
@@ -49,7 +82,7 @@ function submitBind(toolId: string): void {
     <header class="bindings__header">
       <h2>工具绑定</h2>
       <p class="bindings__hint">
-        绑定只记录工具当前选择的档案，不会修改工具配置文件，也不会立即生效。
+        绑定只记录工具当前选择的档案，不会立即修改配置；在主界面详情中预览并应用后才会写入。
       </p>
     </header>
 
@@ -105,8 +138,16 @@ function submitBind(toolId: string): void {
           </button>
         </div>
 
-        <p v-if="bindingFor(tool.id)" class="bindings__pending">
-          已绑定，尚未应用（切换在 008 实现）
+        <p v-if="bindingFor(tool.id)" class="bindings__status">
+          <template v-if="appliedAtFor(tool.id) !== null">
+            已应用（{{ formatTime(appliedAtFor(tool.id) ?? '') }}<template
+              v-if="snapshotIdFor(tool.id) !== null"
+            >，快照 {{ snapshotIdFor(tool.id) }}</template>）
+            <span v-if="needsReapply(tool.id)" class="bindings__pending">
+              档案已修改，需重新应用
+            </span>
+          </template>
+          <template v-else>已绑定，尚未应用</template>
         </p>
       </li>
     </ul>
@@ -123,7 +164,17 @@ function submitBind(toolId: string): void {
               当前档案：{{ profileName(binding.profile_id) }}
             </span>
           </div>
-          <p class="bindings__pending">已绑定，尚未应用（切换在 008 实现）</p>
+          <p class="bindings__status">
+            <template v-if="appliedAtFor(binding.tool_id) !== null">
+              已应用（{{ formatTime(appliedAtFor(binding.tool_id) ?? '') }}<template
+                v-if="snapshotIdFor(binding.tool_id) !== null"
+              >，快照 {{ snapshotIdFor(binding.tool_id) }}</template>）
+              <span v-if="needsReapply(binding.tool_id)" class="bindings__pending">
+                档案已修改，需重新应用
+              </span>
+            </template>
+            <template v-else>已绑定，尚未应用</template>
+          </p>
           <button
             type="button"
             :disabled="busyToolId !== null"
@@ -193,6 +244,11 @@ function submitBind(toolId: string): void {
 
 .bindings__unavailable {
   color: var(--color-danger);
+  font-size: var(--font-size-sm);
+}
+
+.bindings__status {
+  margin: 0;
   font-size: var(--font-size-sm);
 }
 

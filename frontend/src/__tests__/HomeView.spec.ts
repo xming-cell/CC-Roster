@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 
+import type { ProfileListResponse, ProfileView } from '../api/profiles'
+import type { SwitchApplyResponse, SwitchPreviewResponse } from '../api/switch'
 import type { ToolView } from '../api/tools'
 import HomeView from '../views/HomeView.vue'
 import { getAllByRole, getByRole, getByText } from './dom'
@@ -60,16 +62,126 @@ const codexTool = makeTool({
   secret_preview: null,
 })
 
+const emptyProfiles: ProfileListResponse = {
+  profiles: [],
+  bindings: [],
+  secret_store: { backend: 'keyring', fallback: false, message: null },
+  warnings: [],
+}
+
+const emptySnapshots = { snapshots: [], retention_limit: 20, warnings: [] }
+
 function stubApi(routes: Record<string, unknown>) {
   const mock = vi.fn<(path: string) => Promise<Response>>((path) => {
     const body = routes[path]
-    if (body === undefined) {
-      return Promise.reject(new TypeError(`unexpected request: ${path}`))
+    if (body !== undefined) {
+      return Promise.resolve(jsonResponse(body))
     }
-    return Promise.resolve(jsonResponse(body))
+    if (path === '/api/profiles') {
+      return Promise.resolve(jsonResponse(emptyProfiles))
+    }
+    if (path.startsWith('/api/snapshots')) {
+      return Promise.resolve(jsonResponse(emptySnapshots))
+    }
+    return Promise.reject(new TypeError(`unexpected request: ${path}`))
   })
   vi.stubGlobal('fetch', mock)
   return mock
+}
+
+const relayProfile: ProfileView = {
+  id: 'profile-1',
+  name: '主力档案',
+  protocol: 'anthropic',
+  base_url: 'https://relay.example.com',
+  models: [{ id: 'claude-sonnet-4', display_name: 'Sonnet' }],
+  created_at: '2026-11-10T12:00:00Z',
+  updated_at: '2026-11-10T12:00:00Z',
+  has_secret: true,
+  secret_preview: 'sk-a****cdef',
+  secret_backend: 'keyring',
+  used_by: [],
+  warnings: [],
+}
+
+const profilesWithRelay: ProfileListResponse = {
+  profiles: [relayProfile],
+  bindings: [],
+  secret_store: { backend: 'keyring', fallback: false, message: null },
+  warnings: [],
+}
+
+function makePreview(): SwitchPreviewResponse {
+  return {
+    tool_id: 'claude-code',
+    profile_id: relayProfile.id,
+    model: 'claude-sonnet-4',
+    available_models: relayProfile.models,
+    files: [
+      {
+        path: '/home/me/.claude/settings.json',
+        format: 'json',
+        action: 'updated',
+        before_sha256: 'a'.repeat(64),
+        after_sha256: 'b'.repeat(64),
+        before_size: 120,
+        after_size: 140,
+        changes: [
+          {
+            path: 'env.ANTHROPIC_BASE_URL',
+            field: 'env.ANTHROPIC_BASE_URL',
+            action: 'set',
+            before: 'https://api.anthropic.com',
+            after: relayProfile.base_url,
+          },
+        ],
+      },
+    ],
+    blockers: [],
+    warnings: [],
+    restart_required: true,
+    restart_message: 'Claude Code 需要重启后才会读取新的 settings.json',
+    observations: [
+      {
+        path: '/home/me/.claude/settings.json',
+        exists: true,
+        sha256: 'a'.repeat(64),
+        size: 120,
+        mtime_ns: 1,
+      },
+    ],
+    preview_digest: 'c'.repeat(64),
+    can_apply: true,
+  }
+}
+
+function makeApply(): SwitchApplyResponse {
+  return {
+    tool_id: 'claude-code',
+    profile_id: relayProfile.id,
+    snapshot_id: '11111111-1111-4111-8111-111111111111',
+    audit_id: '22222222-2222-4222-8222-222222222222',
+    files: [
+      {
+        path: '/home/me/.claude/settings.json',
+        action: 'updated',
+        sha256: 'b'.repeat(64),
+        size: 140,
+      },
+    ],
+    binding: {
+      tool_id: 'claude-code',
+      profile_id: relayProfile.id,
+      bound_at: '2026-11-11T12:00:00Z',
+      active: true,
+      applied_at: '2026-11-11T12:00:00Z',
+      snapshot_id: '11111111-1111-4111-8111-111111111111',
+    },
+    warnings: [],
+    restart_required: true,
+    restart_message: 'Claude Code 需要重启后才会读取新的 settings.json',
+    applied_at: '2026-11-11T12:00:00Z',
+  }
 }
 
 function mountHome() {
@@ -85,12 +197,14 @@ describe('HomeView', () => {
     let resolveList: ((response: Response) => void) | undefined
     vi.stubGlobal(
       'fetch',
-      vi.fn(
-        () =>
-          new Promise<Response>((resolve) => {
-            resolveList = resolve
-          }),
-      ),
+      vi.fn((path: string) => {
+        if (path === '/api/profiles') {
+          return Promise.resolve(jsonResponse(emptyProfiles))
+        }
+        return new Promise<Response>((resolve) => {
+          resolveList = resolve
+        })
+      }),
     )
     const wrapper = mountHome()
     await flushPromises()
@@ -239,6 +353,8 @@ describe('HomeView', () => {
     const toggle = getByRole(wrapper, 'button', { name: '怎么装' })
     expect(toggle.attributes('aria-expanded')).toBe('false')
     expect(wrapper.text()).not.toContain('npm install -g @anthropic-ai/claude-code')
+    const callsAfterLoad = fetchMock.mock.calls.length
+    expect(callsAfterLoad).toBe(2)
 
     await toggle.trigger('click')
 
@@ -247,7 +363,7 @@ describe('HomeView', () => {
     expect(getByText(wrapper, 'npm install -g @openai/codex')).toBeTruthy()
     expect(getByText(wrapper, 'Claude Code')).toBeTruthy()
     expect(getByText(wrapper, 'Codex CLI')).toBeTruthy()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(callsAfterLoad)
   })
 
   it('shows partial-failure warnings behind a discoverable toggle', async () => {
@@ -309,5 +425,38 @@ describe('HomeView', () => {
     expect(getByRole(wrapper, 'button', { name: 'Claude Code' })).toBeTruthy()
     expect(getByText(wrapper, '刷新失败，当前显示上次结果：无法连接后端服务')).toBeTruthy()
     expect(wrapper.text()).not.toContain('重试')
+  })
+
+  it('shows the switch and snapshot sections and refreshes them after an apply', async () => {
+    const fetchMock = stubApi({
+      '/api/tools': { tools: [claudeTool], warnings: [] },
+      '/api/tools/claude-code': claudeTool,
+      '/api/profiles': profilesWithRelay,
+      '/api/switch/preview': makePreview(),
+      '/api/switch/apply': makeApply(),
+    })
+    const wrapper = mountHome()
+    await flushPromises()
+
+    await getByRole(wrapper, 'button', { name: 'Claude Code' }).trigger('click')
+    await flushPromises()
+
+    expect(getByRole(wrapper, 'heading', { name: '切换档案' })).toBeTruthy()
+    expect(
+      getByRole(wrapper, 'combobox', { name: '选择档案' }).element,
+    ).toHaveProperty('value', relayProfile.id)
+    expect(getByRole(wrapper, 'heading', { name: '快照 / 回滚' })).toBeTruthy()
+    expect(getByText(wrapper, '暂无快照，应用档案后会自动生成')).toBeTruthy()
+
+    await getByRole(wrapper, 'button', { name: '预览改动' }).trigger('click')
+    await flushPromises()
+    await getByRole(wrapper, 'button', { name: '确认应用' }).trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('已应用档案配置')
+    const snapshotCalls = fetchMock.mock.calls.filter(([path]) =>
+      String(path).startsWith('/api/snapshots'),
+    )
+    expect(snapshotCalls).toHaveLength(2)
   })
 })

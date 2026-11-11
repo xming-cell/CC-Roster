@@ -2,16 +2,28 @@
 import { computed, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 
+import type { SwitchApplyResponse } from '../api/switch'
 import DetailSkeleton from '../components/DetailSkeleton.vue'
 import EmptyTools from '../components/EmptyTools.vue'
 import FriendList from '../components/FriendList.vue'
 import GlobalWarnings from '../components/GlobalWarnings.vue'
+import SnapshotPanel from '../components/SnapshotPanel.vue'
+import SwitchPanel from '../components/SwitchPanel.vue'
 import ToolDetailPanel from '../components/ToolDetailPanel.vue'
 import ToolStatusBadge from '../components/ToolStatusBadge.vue'
+import { useProfilesStore } from '../stores/profiles'
+import { useSnapshotsStore } from '../stores/snapshots'
 import { useToolsStore } from '../stores/tools'
 import { normalizeStatus } from '../utils/tools'
 
 const store = useToolsStore()
+const profilesStore = useProfilesStore()
+const snapshotsStore = useSnapshotsStore()
+const {
+  profiles,
+  bindings,
+  error: profilesError,
+} = storeToRefs(profilesStore)
 const {
   sortedTools,
   warnings,
@@ -44,8 +56,16 @@ function selectTool(toolId: string): void {
   void store.selectTool(toolId)
 }
 
+async function handleApplied(result: SwitchApplyResponse): Promise<void> {
+  await Promise.all([store.fetchTools(), profilesStore.fetchProfiles()])
+  if (store.selectedToolId === result.tool_id) {
+    await store.selectTool(result.tool_id)
+  }
+  await snapshotsStore.fetchSnapshots(result.tool_id)
+}
+
 onMounted(() => {
-  void store.fetchTools()
+  void Promise.all([store.fetchTools(), profilesStore.fetchProfiles()])
 })
 </script>
 
@@ -97,6 +117,16 @@ onMounted(() => {
             :error="detailError"
             embedded
           />
+          <p v-if="profilesError !== null" class="home__profiles-error" role="alert">
+            档案列表读取失败：{{ profilesError }}
+          </p>
+          <SwitchPanel
+            :tool="headerTool"
+            :profiles="profiles"
+            :bindings="bindings"
+            @applied="handleApplied"
+          />
+          <SnapshotPanel :tool-id="headerTool.id" />
           <!-- 012 / 014 的会话时间线容器；本卡不渲染会话内容 -->
           <section class="home__timeline" aria-label="会话时间线"></section>
         </div>
@@ -213,6 +243,13 @@ onMounted(() => {
 .home__timeline {
   flex: 1;
   min-height: var(--space-6);
+}
+
+.home__profiles-error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
 }
 
 .home__placeholder {

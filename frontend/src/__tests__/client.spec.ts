@@ -38,7 +38,70 @@ describe('api client', () => {
       code: 'VALIDATION_ERROR',
       message: '请求参数不合法',
       status: 422,
+      details: null,
     })
+  })
+
+  it('parses conflict details without changing the old error shape', async () => {
+    const expected = {
+      path: '/home/me/.claude/settings.json',
+      exists: true,
+      sha256: 'a'.repeat(64),
+      size: 12,
+      mtime_ns: 1,
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            code: 'WRITE_CONFLICT',
+            message: '文件在预览后发生变化',
+            details: {
+              conflicts: [
+                {
+                  path: expected.path,
+                  reason: 'CONTENT_CHANGED',
+                  expected,
+                  actual: { ...expected, sha256: 'b'.repeat(64) },
+                },
+              ],
+            },
+          },
+          409,
+        ),
+      ),
+    )
+
+    const caught = await getHealth().catch((error: unknown) => error)
+
+    expect(caught).toBeInstanceOf(ApiError)
+    expect(caught).toMatchObject({ code: 'WRITE_CONFLICT', status: 409 })
+    expect((caught as ApiError).details?.conflicts?.[0]).toMatchObject({
+      path: expected.path,
+      reason: 'CONTENT_CHANGED',
+    })
+  })
+
+  it('ignores malformed details instead of rejecting the error body', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            code: 'WRITE_CONFLICT',
+            message: '文件在预览后发生变化',
+            details: { conflicts: [{ path: 42 }] },
+          },
+          409,
+        ),
+      ),
+    )
+
+    const caught = await getHealth().catch((error: unknown) => error)
+
+    expect(caught).toBeInstanceOf(ApiError)
+    expect((caught as ApiError).details).toBeNull()
   })
 
   it('falls back when the error body is not JSON', async () => {

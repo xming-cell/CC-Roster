@@ -77,7 +77,10 @@ async def _read_body(receive: Receive, limit: int) -> tuple[bytes | None, bool]:
 
 
 async def _send_too_large(send: Send) -> None:
-    payload = ErrorResponse(code=PAYLOAD_TOO_LARGE, message=_TOO_LARGE_MESSAGE).model_dump_json()
+    payload = ErrorResponse(
+        code=PAYLOAD_TOO_LARGE,
+        message=_TOO_LARGE_MESSAGE,
+    ).model_dump_json(exclude_none=True)
     body = payload.encode("utf-8")
     await send(
         {
