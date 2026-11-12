@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ProfileView } from '../api/profiles'
+import ProfileHealthCheck from './ProfileHealthCheck.vue'
 import {
   protocolLabel,
   secretBackendLabel,
@@ -54,6 +55,12 @@ function usageText(profile: ProfileView): string {
       <dt>占用工具</dt>
       <dd>{{ usageText(props.profile) }}</dd>
     </dl>
+
+    <ProfileHealthCheck
+      :profile-id="props.profile.id"
+      :profile-name="props.profile.name"
+      :models="props.profile.models"
+    />
 
     <footer class="card__actions">
       <button

@@ -16,7 +16,7 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 
 ## 当前状态
 
-**v0.0.1 · 基础设施阶段。** 任务卡 008（一键切换与改动预览）已完成；001–007 已完成。
+**v0.0.1 · 基础设施阶段。** 任务卡009健康体检已完成功能实现；真实供应商手动验收待完成。001–008 已完成。
 
 已落地：
 
@@ -28,6 +28,7 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 - 主界面视觉 token（`frontend/src/styles/tokens.css`）：颜色 / 字号 / 间距 / 圆角 / 头像 / 气泡，提供 `--friend-accent` / `--friend-avatar-bg` / `--bubble-*` 覆盖点
 - 工具发现：Claude Code / Codex CLI 适配器、`GET /api/tools`、`GET /api/tools/{tool_id}`、`/` 主界面与 `/tools` 过渡入口；读取不写盘，008 起两个适配器声明 `write=true` / `write_mode="managed_fields"`，写入只发生在显式 apply；密钥只返回脱敏预览
 - 供应商档案：`/profiles` 管理页与 `/api/profiles`，档案 CRUD / 复制 / 模型清单 / 删除保护 / 工具绑定（绑定本身不写工具配置；显式应用后才写入并记录 `active` / `applied_at` / `snapshot_id`）；密钥优先存 OS 钥匙串，不可用时回退本机 `secrets.json`（Unix `0600`）
+- 健康体检：用户在 `/profiles` 主动选择模型并触发一次真实、最小化的非流式探测；不后台轮询、不自动重试、不持久化结果，也不修改档案、密钥或工具配置
 - 快照与回滚内核：内容寻址分块存储、按工具的保留策略与 pin、外部改动检测、保真编辑助手、原子写引擎（写锁 / 预快照 / 回读校验 / 失败还原）、`/api/snapshots` 列表 · 详情 · pin · 回滚、`audit_entries` 审计
 - 一键切换与改动预览：`POST /api/switch/preview`（零写入）与 `/apply`（快照 → 原子写 → 回读 → 审计 → 绑定，失败自动还原）、`GET /api/audit`；主界面「切换档案」预览确认框与字段级 diff、「快照 / 回滚」面板；冲突 / 过期 digest / 权限 / 协议 / OAuth 等 blocker 与 warning 可读展示；密钥写入工具配置，API / 日志 / 错误 / 审计 / 快照 `meta.json` 全程脱敏
 - `scripts/check.py` 一键验收（含改动范围 / 禁用写法门禁），GitHub Actions CI 已接通
@@ -36,7 +37,7 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 规划中：
 
 - 在线聊天与 agent 会话
-- 审计 UI、全局只读模式、健康体检等按 `docs/task-plan.md` 的后续任务卡推进
+- 审计 UI、全局只读模式等按 `docs/task-plan.md` 的后续任务卡推进
 
 ## 设计原则
 
@@ -53,6 +54,7 @@ flowchart LR
     UI["Web / Tauri / VS Code"] --> API["localhost API<br/>FastAPI"]
     API --> H["GET /api/health<br/>已实现"]
     API --> SW["switch preview / apply<br/>snapshots / audit<br/>已实现"]
+    API --> HC["POST /api/profiles/{profile_id}/health-check<br/>用户主动触发，已实现"]
     API --> AD["Adapters<br/>Claude Code / Codex CLI<br/>已实现（读 / 受控写）"]
     AD --> CFG[("配置文件<br/>唯一真相源")]
     API -. 可重建 .-> DB[("本地索引")]
@@ -203,8 +205,25 @@ export CODEX_HOME="$TMPDIR/cc-roster-acceptance/codex"
 | `DELETE` | `/api/profiles/{profile_id}?confirm=true` | 删除档案；未确认且被占用时 409 |
 | `PUT` | `/api/tools/{tool_id}/profile` | 绑定工具到档案（body `{profile_id}`） |
 | `DELETE` | `/api/tools/{tool_id}/profile` | 解除绑定；幂等，无绑定返回 `removed=false` |
+| `POST` | `/api/profiles/{profile_id}/health-check` | 按档案协议检测所选模型；只返回本次结果，不写入档案或历史 |
 
 错误统一为 `{code, message}`，常见错误码：`PROFILE_NOT_FOUND`、`PROFILE_NAME_CONFLICT`、`PROFILE_IN_USE`、`PROFILE_STORE_UNREADABLE`、`PROFILE_STORE_VERSION_UNSUPPORTED`、`SECRET_STORE_ERROR`、`TOOL_NOT_FOUND`。
+
+### 健康体检（009）
+
+在 `/profiles` 每张档案卡片中选模型并点「体检」即可主动检查连通性。默认选模型清单第一项；清单为空时按钮禁用。每次操作只发一个非流式最小请求，超时上限 10 秒，不跟随重定向、不自动重试，也不发送用户对话内容。此请求会到达档案中的供应商地址，供应商可能按其规则计费；无后台或定时请求。
+
+密钥只在本次请求中用于协议认证，不进入响应或日志；上游错误正文不会原样回显。页面会显示连通状态、失败类型、可读说明和耗时。可能的结果包括 `CONNECTED`、`INVALID_CREDENTIALS`、`INVALID_ADDRESS`、`MODEL_NOT_FOUND`、`TIMEOUT`、`RATE_LIMITED`、`SECRET_MISSING`、`SECRET_STORE_ERROR` 与 `UNKNOWN`。没有模型时返回 `MODEL_REQUIRED`，不发网络请求。
+
+可直接验收 API（先从 `/api/profiles` 选择档案 ID 和其清单中的模型）：
+
+```bash
+curl -i -X POST http://127.0.0.1:8000/api/profiles/<profile_id>/health-check \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"<listed-model-id>"}'
+```
+
+真实供应商验收应使用专门的测试档案，不要绑定或应用到工具；由用户选择地址、模型和凭证。依次检查正确地址 / 有效凭证、不可达地址、临时无效 key，以及档案清单中但供应商不存在的模型。修改测试档案后恢复原值或删除测试档案；不得把密钥写入命令历史、截图或记录。测试前后核对档案与密钥状态、工具配置文件、快照和审计数据；只记录供应商、模型与诊断结论，不记录密钥。
 
 ### 密钥存储与回退
 

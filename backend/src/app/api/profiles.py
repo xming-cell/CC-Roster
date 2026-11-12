@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.core.paths import resolve_data_dir
 from app.repositories.profiles import ProfileRepository
 from app.repositories.secrets import build_secret_store
+from app.schemas.health_check import HealthCheckRequest, HealthCheckResponse
 from app.schemas.profile import (
     BindingDeleteResponse,
     BindingView,
@@ -25,6 +26,7 @@ from app.schemas.profile import (
     ProfileUpdate,
     ProfileView,
 )
+from app.services.health_check import HealthCheckService, UrllibHealthCheckTransport
 from app.services.profile_service import ProfileService
 from app.services.tool_discovery import ToolDiscoveryService
 
@@ -41,7 +43,17 @@ def get_profile_service() -> ProfileService:
     )
 
 
+def get_health_check_service() -> HealthCheckService:
+    data_dir = Path(resolve_data_dir())
+    return HealthCheckService(
+        ProfileRepository(data_dir),
+        build_secret_store(data_dir, mode=settings.secret_backend),
+        UrllibHealthCheckTransport(),
+    )
+
+
 ProfileServiceDep = Annotated[ProfileService, Depends(get_profile_service)]
+HealthCheckServiceDep = Annotated[HealthCheckService, Depends(get_health_check_service)]
 
 
 @router.get("/api/profiles", response_model=ProfileListResponse)
@@ -101,3 +113,15 @@ def unbind_tool_profile(
     service: ProfileServiceDep,
 ) -> BindingDeleteResponse:
     return service.unbind_tool(tool_id)
+
+
+@router.post(
+    "/api/profiles/{profile_id}/health-check",
+    response_model=HealthCheckResponse,
+)
+def health_check_profile(
+    profile_id: str,
+    service: HealthCheckServiceDep,
+    payload: HealthCheckRequest | None = None,
+) -> HealthCheckResponse:
+    return service.check(profile_id, payload or HealthCheckRequest())

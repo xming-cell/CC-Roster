@@ -610,4 +610,142 @@ describe('ProfilesView', () => {
     expect(wrapper.text()).toContain('密钥引用存在')
     expect(wrapper.text()).not.toContain('未设置密钥')
   })
+
+  it('lets a user choose a model and view an explicit health result', async () => {
+    const profile = makeProfile()
+    installFetch((path, method) => {
+      if (path === '/api/tools') {
+        return jsonResponse({ tools: [], warnings: [] })
+      }
+      if (path === '/api/profiles') {
+        return jsonResponse(profilesBody([profile]))
+      }
+      if (method === 'POST' && path.endsWith('/health-check')) {
+        return jsonResponse({
+          profile_id: profile.id,
+          model: 'claude-sonnet-4',
+          status: 'CONNECTED',
+          attempted: true,
+          duration_ms: 87,
+          message: '连接成功。档案地址、凭证和模型可用',
+          checked_at: '2026-11-12T10:00:00Z',
+        })
+      }
+      return Promise.reject(new TypeError(`unexpected request: ${method} ${path}`))
+    })
+    const wrapper = mountProfiles()
+    await flushPromises()
+
+    const model = getByRole(wrapper, 'combobox', { name: '体检模型' })
+    expect((model.element as HTMLSelectElement).value).toBe('claude-sonnet-4')
+    expect(
+      getByRole(wrapper, 'button', { name: '体检档案 Anthropic 主力' }).element.tagName,
+    ).toBe('BUTTON')
+    expect(wrapper.text()).toContain('可能产生少量费用')
+    expect(wrapper.text()).toContain('不会发送聊天内容')
+
+    await getByRole(wrapper, 'button', { name: '体检档案 Anthropic 主力' }).trigger('click')
+    await flushPromises()
+
+    const healthChecks = requestCalls('POST', `/api/profiles/${profile.id}/health-check`)
+    expect(healthChecks).toHaveLength(1)
+    expect(healthChecks[0]?.body).toEqual({ model: 'claude-sonnet-4' })
+    expect(getByRole(wrapper, 'status').text()).toContain('耗时 87 ms')
+    expect(wrapper.text()).toContain('连接成功。档案地址、凭证和模型可用')
+  })
+
+  it('disables model-less health checks and explains how to enable them', async () => {
+    const profile = makeProfile({ models: [] })
+    installFetch((path) =>
+      jsonResponse(
+        path === '/api/profiles' ? profilesBody([profile]) : { tools: [], warnings: [] },
+      ),
+    )
+    const wrapper = mountProfiles()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('尚无模型')
+    expect(
+      getByRole(wrapper, 'button', { name: '体检档案 Anthropic 主力' }).attributes('disabled'),
+    ).toBeDefined()
+    expect(calls.some((call) => call.path.endsWith('/health-check'))).toBe(false)
+  })
+
+  it('prevents duplicate health requests while one is pending', async () => {
+    const profile = makeProfile()
+    const healthRequest: { resolve?: (response: Response) => void } = {}
+    installFetch((path, method) => {
+      if (path === '/api/tools') {
+        return jsonResponse({ tools: [], warnings: [] })
+      }
+      if (method === 'POST' && path.endsWith('/health-check')) {
+        return new Promise<Response>((resolve) => {
+          healthRequest.resolve = resolve
+        })
+      }
+      return jsonResponse(profilesBody([profile]))
+    })
+    const wrapper = mountProfiles()
+    await flushPromises()
+
+    const button = getByRole(wrapper, 'button', { name: '体检档案 Anthropic 主力' })
+    await button.trigger('click')
+    await flushPromises()
+    expect(button.attributes('disabled')).toBeDefined()
+    await button.trigger('click')
+    expect(requestCalls('POST', `/api/profiles/${profile.id}/health-check`)).toHaveLength(1)
+
+    healthRequest.resolve?.(
+      jsonResponse({
+        profile_id: profile.id,
+        model: 'claude-sonnet-4',
+        status: 'CONNECTED',
+        attempted: true,
+        duration_ms: 5,
+        message: '连接成功',
+        checked_at: '2026-11-12T10:00:00Z',
+      }),
+    )
+    await flushPromises()
+    expect(button.attributes('disabled')).toBeUndefined()
+    expect(wrapper.text()).toContain('连接成功')
+  })
+
+  it('shows request errors and allows a health check retry', async () => {
+    const profile = makeProfile()
+    let fail = true
+    installFetch((path, method) => {
+      if (path === '/api/tools') {
+        return jsonResponse({ tools: [], warnings: [] })
+      }
+      if (method === 'POST' && path.endsWith('/health-check')) {
+        if (fail) {
+          return jsonResponse({ code: 'INTERNAL_ERROR', message: '体检服务暂不可用' }, 500)
+        }
+        return jsonResponse({
+          profile_id: profile.id,
+          model: 'claude-sonnet-4',
+          status: 'CONNECTED',
+          attempted: true,
+          duration_ms: 5,
+          message: '连接成功',
+          checked_at: '2026-11-12T10:00:00Z',
+        })
+      }
+      return jsonResponse(profilesBody([profile]))
+    })
+    const wrapper = mountProfiles()
+    await flushPromises()
+    const button = getByRole(wrapper, 'button', { name: '体检档案 Anthropic 主力' })
+
+    await button.trigger('click')
+    await flushPromises()
+    expect(getByRole(wrapper, 'alert').text()).toContain('体检服务暂不可用')
+
+    fail = false
+    await button.trigger('click')
+    await flushPromises()
+    expect(requestCalls('POST', `/api/profiles/${profile.id}/health-check`)).toHaveLength(2)
+    expect(wrapper.text()).toContain('连接成功')
+  })
 })

@@ -47,9 +47,11 @@ uv run python scripts/check.py
 2. 把 `specs/CURRENT` 改成 `NNN`（不改则 `guard scope` 会跳过范围校验）；
 3. 只动 scope 内的文件，做完把 check.py 输出贴进 `tasks.md`。
 
-当前任务卡：008「一键切换与改动预览」（`specs/008-switch-preview`），`specs/CURRENT` 已指向 008；T1–T8 已全部完成，下一张卡待按 `docs/task-plan.md` 开启。
+当前任务卡：009「健康体检」（`specs/009-health-check`），`specs/CURRENT` 已指向 009；按 `docs/task-plan.md` 开卡。开卡决策：只允许用户主动触发，不做后台轮询 / 自动重试 / 历史持久化；按协议与档案模型发送一次最小探测，限时且不跟随重定向；结果脱敏并且不修改任何配置。DoD / scope / 边界见 `specs/009-health-check/spec.md`，任务拆分与手动验收见同目录 `tasks.md`。
 
-卡片状态：001–008 均已完成；下一张卡待开。
+卡片状态：001–008 均已完成；009 的 T1–T5 已完成；T6 文档与自动验收收尾已完成，真实供应商手动验收待用户选择档案 / 模型并明确授权。
+
+- 009 T1–T5 已实现并通过全量验收（552 个后端测试、84 个前端测试）。T6 已更新 README、任务卡与本交接；因真实请求可能产生费用且要求用户明确选择档案 / 模型，本次未发起外部请求，手动验收结果如实留为未执行。完整 `check.py` 输出见 `specs/009-health-check/tasks.md`。
 
 ## 已知坑
 
@@ -66,4 +68,5 @@ uv run python scripts/check.py
 - 前端 e2e（Playwright）尚未接入 `check.py`。
 - 真实 Codex 已由用户在临时 `CODEX_HOME` 下手动验收确认「正常」；若 Codex 后续版本改变 `auth.json` / OAuth 优先级，需重新验证映射。
 - 008 已改变两个 004 适配器的 `capabilities.write` / `write_mode`；`test_tools_api.py` / `test_tool_discovery.py` 的断言已按规格同步（行为变更，不是为让测试变绿）。`/profiles` 的绑定状态文案已在 T7 改为已应用 / 尚未应用 / 档案已修改。
+- 009 T6 的真实供应商验收仍需用户指定已有档案和模型，并明确授权最多四次可能计费的探测；未获得授权前不访问供应商。
 - `guard forbidden` 目前不拦"注释掉的断言"，这个规则仍靠人看 diff。
