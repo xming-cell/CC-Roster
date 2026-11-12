@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 
+import type { ToolStatus } from '../api/tools'
 import type { SwitchApplyResponse } from '../api/switch'
 import DetailSkeleton from '../components/DetailSkeleton.vue'
 import EmptyTools from '../components/EmptyTools.vue'
@@ -36,6 +37,29 @@ const {
   detailError,
 } = storeToRefs(store)
 
+const searchQuery = ref('')
+const statusFilter = ref<ToolStatus | 'all'>('all')
+const debouncedQuery = ref('')
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+const filteredTools = computed(() => {
+  const input = debouncedQuery.value.trim().toLowerCase()
+  let result = sortedTools.value
+
+  if (input !== '') {
+    result = result.filter((tool) => {
+      const haystack = [tool.display_name, tool.provider ?? '', tool.model ?? ''].join(' ').toLowerCase()
+      return haystack.includes(input)
+    })
+  }
+
+  if (statusFilter.value !== 'all') {
+    result = result.filter((tool) => tool.status === statusFilter.value)
+  }
+
+  return result
+})
+
 const initialLoading = computed(
   () => loading.value && sortedTools.value.length === 0 && error.value === null,
 )
@@ -50,6 +74,28 @@ const selectedSummary = computed(() => {
 const headerTool = computed(() => selectedTool.value ?? selectedSummary.value)
 const headerStatus = computed(() =>
   headerTool.value === null ? null : normalizeStatus(headerTool.value.status),
+)
+
+function applySearch(value: string): void {
+  if (searchTimer !== null) {
+    clearTimeout(searchTimer)
+  }
+  searchTimer = setTimeout(() => {
+    debouncedQuery.value = value
+  }, 200)
+}
+
+function clearFilters(): void {
+  searchQuery.value = ''
+  debouncedQuery.value = ''
+  statusFilter.value = 'all'
+}
+
+watch(
+  () => searchQuery.value,
+  (value) => {
+    applySearch(value)
+  },
 )
 
 function selectTool(toolId: string): void {
@@ -90,8 +136,44 @@ onMounted(() => {
         刷新失败，当前显示上次结果：{{ refreshError }}
       </p>
 
+      <div class="home__toolbar" role="search">
+        <label class="home__search">
+          <span class="sr-only">搜索工具</span>
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="搜索名称 / 供应商 / 模型"
+            aria-label="搜索工具"
+          />
+        </label>
+        <div class="home__status-filters" aria-label="状态筛选">
+          <button
+            v-for="option in ['all', 'ok', 'unconfigured', 'error']"
+            :key="option"
+            type="button"
+            class="home__status-button"
+            :class="{ 'home__status-button--active': statusFilter === option }"
+            :aria-pressed="statusFilter === option"
+            @click="statusFilter = option as ToolStatus | 'all'"
+          >
+            {{ option === 'all' ? '全部' : option === 'ok' ? '正常' : option === 'unconfigured' ? '未配置' : '异常' }}
+          </button>
+        </div>
+      </div>
+
+      <div
+        v-if="filteredTools.length === 0 && !loading && sortedTools.length > 0"
+        class="home__empty-state"
+        role="status"
+      >
+        <p class="home__empty-title">没有匹配项</p>
+        <p class="home__empty-text">尝试更换关键词或调整状态筛选。</p>
+        <button type="button" class="home__clear-filters" @click="clearFilters()">清除筛选</button>
+      </div>
+
       <FriendList
-        :tools="sortedTools"
+        v-else
+        :tools="filteredTools"
         :loading="loading"
         :error="error"
         :selected-id="selectedToolId"
@@ -102,7 +184,9 @@ onMounted(() => {
 
     <section class="home__detail" aria-label="详情与会话">
       <DetailSkeleton v-if="initialLoading" />
-      <p v-else-if="error !== null" class="home__placeholder">工具列表加载失败，请重试</p>
+      <p v-else-if="error !== null" class="home__placeholder">
+        工具列表加载失败，请重试
+      </p>
       <EmptyTools v-else-if="sortedTools.length === 0" />
       <template v-else-if="headerTool !== null">
         <header class="home__detail-header">
@@ -117,7 +201,7 @@ onMounted(() => {
             :error="detailError"
             embedded
           />
-          <p v-if="profilesError !== null" class="home__profiles-error" role="alert">
+          <p v-if="profilesError !== null" class="home__profiles-error">
             档案列表读取失败：{{ profilesError }}
           </p>
           <SwitchPanel
@@ -154,6 +238,102 @@ onMounted(() => {
   min-height: 0;
   border-right: 1px solid var(--color-border);
   background: var(--color-sidebar-bg);
+}
+
+.home__toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.home__search {
+  display: block;
+}
+
+.home__search input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.home__search input:focus-visible {
+  outline: 2px solid var(--friend-accent);
+  outline-offset: 2px;
+}
+
+.home__status-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.home__status-button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: 0.125rem var(--space-2);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.home__status-button--active {
+  border-color: var(--friend-accent);
+  background: var(--friend-accent-soft);
+  color: var(--friend-accent);
+}
+
+.home__status-button:focus-visible {
+  outline: 2px solid var(--friend-accent);
+  outline-offset: 2px;
+}
+
+.home__empty-state {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  color: var(--color-text-secondary);
+}
+
+.home__empty-title {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.home__empty-text {
+  margin: 0;
+}
+
+.home__clear-filters {
+  align-self: flex-start;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .home__sidebar-header {

@@ -26,7 +26,7 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 - 本地安全边界：仅监听 `127.0.0.1`、CORS 白名单、1 MiB 请求体上限
 - Vue 3 前端请求层（统一 `ApiError`）、路由、Pinia store 与应用壳；`/` 为微信式主界面：左侧好友列表、右侧详情 / 会话区骨架
 - 主界面视觉 token（`frontend/src/styles/tokens.css`）：颜色 / 字号 / 间距 / 圆角 / 头像 / 气泡，提供 `--friend-accent` / `--friend-avatar-bg` / `--bubble-*` 覆盖点
-- 工具发现：Claude Code / Codex CLI 适配器、`GET /api/tools`、`GET /api/tools/{tool_id}`、`/` 主界面与 `/tools` 过渡入口；读取不写盘，008 起两个适配器声明 `write=true` / `write_mode="managed_fields"`，写入只发生在显式 apply；密钥只返回脱敏预览
+- 工具发现：Claude Code / Codex CLI 适配器、`GET /api/tools`（支持 `name` / `provider` / `model` / `status` 过滤）、`GET /api/tools/{tool_id}`、`/` 主界面与 `/tools` 过渡入口；读取不写盘，008 起两个适配器声明 `write=true` / `write_mode="managed_fields"`，写入只发生在显式 apply；密钥只返回脱敏预览
 - 供应商档案：`/profiles` 管理页与 `/api/profiles`，档案 CRUD / 复制 / 模型清单 / 删除保护 / 工具绑定（绑定本身不写工具配置；显式应用后才写入并记录 `active` / `applied_at` / `snapshot_id`）；密钥优先存 OS 钥匙串，不可用时回退本机 `secrets.json`（Unix `0600`）
 - 健康体检：用户在 `/profiles` 主动选择模型并触发一次真实、最小化的非流式探测；不后台轮询、不自动重试、不持久化结果，也不修改档案、密钥或工具配置
 - 快照与回滚内核：内容寻址分块存储、按工具的保留策略与 pin、外部改动检测、保真编辑助手、原子写引擎（写锁 / 预快照 / 回读校验 / 失败还原）、`/api/snapshots` 列表 · 详情 · pin · 回滚、`audit_entries` 审计
@@ -134,7 +134,7 @@ uv run python scripts/check.py
 
 ## 工具发现（只读）
 
-`GET /api/tools` 返回已安装工具与顶层 warnings，`GET /api/tools/{tool_id}` 返回单个工具；未知 ID 返回 404 `{code: "TOOL_NOT_FOUND", message}`。前端页面为 <http://localhost:5173/tools>，列表展示状态、供应商、模型，详情展示接口地址、第三方中转、脱敏密钥、最后修改时间、配置路径与 warnings。
+`GET /api/tools` 返回已安装工具与顶层 warnings，支持 `name` / `provider` / `model` / `status` 查询参数进行纯内存组合过滤；`GET /api/tools/{tool_id}` 返回单个工具；未知 ID 返回 404 `{code: "TOOL_NOT_FOUND", message}`。前端页面为 <http://localhost:5173/tools>，列表展示状态、供应商、模型，详情展示接口地址、第三方中转、脱敏密钥、最后修改时间、配置路径与 warnings。
 
 - 只读取用户级配置：Claude Code 的 `settings.json`（`CLAUDE_CONFIG_DIR`，默认 `~/.claude`）与 Codex CLI 的 `config.toml` + `auth.json`（`CODEX_HOME`，默认 `~/.codex`）；不读 OAuth / 登录凭据，不执行 CLI 子进程。
 - 读取全程只读：不修改配置文件、不生成临时文件；密钥只以 `has_secret` + 脱敏 `secret_preview` 返回。

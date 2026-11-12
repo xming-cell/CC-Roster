@@ -23,7 +23,14 @@ class ToolDiscoveryService:
     def __init__(self, registry: ToolRegistry) -> None:
         self._registry = registry
 
-    def list_tools(self) -> ToolListResponse:
+    def list_tools(
+        self,
+        *,
+        name: str | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        status: ToolStatus | None = None,
+    ) -> ToolListResponse:
         """未安装的工具不出现; 单个适配器异常降级为顶层 ADAPTER_ERROR。"""
         tools: list[ToolView] = []
         warnings = list(self._registry.warnings)
@@ -35,7 +42,8 @@ class ToolDiscoveryService:
                 continue
             if view is not None:
                 tools.append(view)
-        return ToolListResponse(tools=tools, warnings=warnings)
+        filtered = _filter_tools(tools, name=name, provider=provider, model=model, status=status)
+        return ToolListResponse(tools=filtered, warnings=warnings)
 
     def get_tool(self, tool_id: str) -> ToolView:
         """按 id 读取单个工具; 未知 / 未安装 / 适配器异常都不返回 traceback。"""
@@ -94,6 +102,45 @@ def _merge_warnings(*groups: Iterable[ToolWarning]) -> list[ToolWarning]:
             seen.add(key)
             merged.append(warning)
     return merged
+
+
+def _filter_tools(
+    tools: Iterable[ToolView],
+    *,
+    name: str | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    status: ToolStatus | None = None,
+) -> list[ToolView]:
+    normalized_name = _normalize_query(name)
+    normalized_provider = _normalize_query(provider)
+    normalized_model = _normalize_query(model)
+
+    def matches(tool: ToolView) -> bool:
+        if normalized_name is not None and not _contains_folded(tool.display_name, normalized_name):
+            return False
+        if normalized_provider is not None and not _contains_folded(
+            tool.provider or "", normalized_provider
+        ):
+            return False
+        if normalized_model is not None and not _contains_folded(
+            tool.model or "", normalized_model
+        ):
+            return False
+        return not (status is not None and tool.status != status)
+
+    return [tool for tool in tools if matches(tool)]
+
+
+def _normalize_query(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized.lower() if normalized else None
+
+
+def _contains_folded(value: str, needle: str) -> bool:
+    return needle in value.casefold()
 
 
 def _adapter_error(tool_id: str, exc: Exception) -> ToolWarning:

@@ -297,6 +297,38 @@ def test_list_reflects_config_changes_between_calls(tmp_path: Path) -> None:
     assert service.list_tools().tools[0].model == "second-model"
 
 
+def test_list_tools_filters_by_name_provider_model_and_status(tmp_path: Path) -> None:
+    claude_dir = tmp_path / "claude"
+    seed_claude(claude_dir)
+    codex_dir = tmp_path / "codex"
+    seed_codex(codex_dir)
+
+    response = make_service(claude_adapter(claude_dir), codex_adapter(codex_dir)).list_tools(
+        name="  claude  ",
+        provider="anthropic",
+        model="sonnet",
+        status="ok",
+    )
+
+    assert [tool.id for tool in response.tools] == ["claude-code"]
+
+
+def test_list_tools_ignores_blank_filters_and_keeps_original_order(tmp_path: Path) -> None:
+    claude_dir = tmp_path / "claude"
+    seed_claude(claude_dir)
+    codex_dir = tmp_path / "codex"
+    seed_codex(codex_dir)
+
+    response = make_service(claude_adapter(claude_dir), codex_adapter(codex_dir)).list_tools(
+        name=" ",
+        provider="",
+        model="\t",
+        status=None,
+    )
+
+    assert [tool.id for tool in response.tools] == ["claude-code", "codex-cli"]
+
+
 def test_warning_code_contract_covers_required_failures() -> None:
     codes = set(get_args(WarningCode))
 

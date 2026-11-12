@@ -344,6 +344,39 @@ describe('HomeView', () => {
     expect(wrapper.text()).not.toContain('Claude Code')
   })
 
+  it('filters the list by search text and status without re-fetching', async () => {
+    const fetchMock = stubApi({
+      '/api/tools': {
+        tools: [claudeTool, codexTool, makeTool({ id: 'broken-tool', display_name: 'Broken Tool', status: 'error' })],
+        warnings: [],
+      },
+    })
+    const wrapper = mountHome()
+    await flushPromises()
+
+    const input = getByRole(wrapper, 'textbox', { name: '搜索工具' })
+    await input.setValue('codex')
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    await flushPromises()
+
+    expect(getByRole(wrapper, 'button', { name: 'Codex CLI' })).toBeTruthy()
+    expect(wrapper.text()).not.toContain('Claude Code')
+
+    await getByRole(wrapper, 'button', { name: '未配置' }).trigger('click')
+    await flushPromises()
+    expect(getByRole(wrapper, 'button', { name: 'Codex CLI' })).toBeTruthy()
+
+    await input.setValue('nomatch')
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    await flushPromises()
+
+    const clearButton = getByRole(wrapper, 'button', { name: '清除筛选' })
+    await clearButton.trigger('click')
+    await flushPromises()
+    expect(getByRole(wrapper, 'button', { name: 'Claude Code' })).toBeTruthy()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('shows the global empty state and expands the install guide without requests', async () => {
     const fetchMock = stubApi({ '/api/tools': { tools: [], warnings: [] } })
     const wrapper = mountHome()

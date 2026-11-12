@@ -9,11 +9,11 @@
 
 ## 任务
 
-- [ ] T1 后端筛选契约：为 `GET /api/tools` 增加可选名称 / 供应商 / 模型 / 状态参数；覆盖缺省、空值、大小写、非法状态与组合筛选。
-- [ ] T2 内存过滤与规模验证：服务层实现纯内存过滤，不新增索引；用 120+ 个合成工具验证结果、原顺序与过滤性能。
-- [ ] T3 主界面搜索与状态筛选：增加搜索框、状态 chips、200ms 防抖、即时状态反馈、结果数量及无匹配文案 / 清除入口；组件测试覆盖键盘操作和空态。
-- [ ] T4 状态与排序回归：搜索 / 状态组合不改变 005 排序、工具原始列表、选中 ID 或详情；连续输入只呈现最新条件；测试筛出所选工具及恢复筛选。
-- [ ] T5 文档与收尾：README 更新主界面与 API 参数说明；`uv run python scripts/check.py` 退出码 0，完整输出贴入验收记录。
+- [x] T1 后端筛选契约：为 `GET /api/tools` 增加可选名称 / 供应商 / 模型 / 状态参数；覆盖缺省、空值、大小写、非法状态与组合筛选。
+- [x] T2 内存过滤与规模验证：服务层实现纯内存过滤，不新增索引；用 120+ 个合成工具验证结果、原顺序与过滤性能。
+- [x] T3 主界面搜索与状态筛选：增加搜索框、状态 chips、200ms 防抖、即时状态反馈、结果数量及无匹配文案 / 清除入口；组件测试覆盖键盘操作和空态。
+- [x] T4 状态与排序回归：搜索 / 状态组合不改变 005 排序、工具原始列表、选中 ID 或详情；连续输入只呈现最新条件；测试筛出所选工具及恢复筛选。
+- [x] T5 文档与收尾：README 更新主界面与 API 参数说明；`uv run python scripts/check.py` 退出码 0，完整输出贴入验收记录。
 
 ## 手动验收
 
@@ -30,5 +30,65 @@
 命令：`uv run python scripts/check.py`
 
 ```text
-待填
+=== guard scope ===
+
+=== guard: scope ===
+task card: specs/010-search-filter (9 path rules)
+[ok] 6 changed file(s), all within scope
+
+[guard] PASS
+
+=== guard forbidden ===
+
+=== guard: forbidden ===
+[ok] no banned patterns in source
+
+[guard] PASS
+
+=== backend lint ===
+All checks passed!
+
+=== backend format ===
+93 files already formatted
+
+=== backend types ===
+Success: no issues found in 49 source files
+
+=== backend tests ===
+........................................................................ [ 12%]
+........................................................................ [ 25%]
+........................................................................ [ 38%]
+........................................................................ [ 51%]
+........................................................................ [ 64%]
+........................................................................ [ 77%]
+........................................................................ [ 90%]
+....................................................                     [100%]
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\�ҵ��ļ���\��Ŀ3\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+556 passed, 1 warning in 32.01s
+
+=== frontend types ===
+$ vue-tsc --build
+
+=== frontend lint ===
+$ run-s "lint:*"
+$ oxlint . --fix
+$ eslint . --fix --cache
+
+=== frontend tests ===
+$ vitest --run
+
+ RUN  v4.1.12 D:/我的文件夹/项目3/frontend
+
+ Test Files  9 passed (9)
+      Tests  85 passed (85)
+   Start at  23:05:23
+   Duration  12.36s (import 20.47s, tests 5.64s, environment 51.22s)
+
+
+All checks passed.
 ```
