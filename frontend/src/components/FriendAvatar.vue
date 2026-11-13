@@ -27,8 +27,11 @@ const tone = computed(() => avatarTone(props.toolId))
   width: var(--avatar-size);
   height: var(--avatar-size);
   border-radius: var(--avatar-radius);
-  background: var(--friend-avatar-bg, var(--avatar-tone-1));
-  color: var(--friend-avatar-fg);
+  background: var(
+    --friend-avatar-background-light,
+    var(--friend-avatar-bg, var(--avatar-tone-1))
+  );
+  color: var(--friend-avatar-foreground-light, var(--friend-avatar-fg));
   font-size: var(--font-size-lg);
   font-weight: 600;
   user-select: none;
@@ -56,5 +59,15 @@ const tone = computed(() => avatarTone(props.toolId))
 
 .friend-avatar--tone-5 {
   --friend-avatar-bg: var(--avatar-tone-5);
+}
+
+@media (prefers-color-scheme: dark) {
+  .friend-avatar {
+    background: var(
+      --friend-avatar-background-dark,
+      var(--friend-avatar-bg, var(--avatar-tone-1))
+    );
+    color: var(--friend-avatar-foreground-dark, var(--friend-avatar-fg));
+  }
 }
 </style>

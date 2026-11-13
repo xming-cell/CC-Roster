@@ -5,6 +5,7 @@ from pathlib import Path, PurePath
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.appearances import router as appearances_router
 from app.api.audit import router as audit_router
 from app.api.error_handlers import register_exception_handlers
 from app.api.health import router as health_router
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     )
     register_exception_handlers(app)
     app.include_router(health_router)
+    app.include_router(appearances_router)
     app.include_router(tools_router)
     app.include_router(profiles_router)
     app.include_router(snapshots_router)

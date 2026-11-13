@@ -77,6 +77,9 @@ function stubApi(routes: Record<string, unknown>) {
     if (body !== undefined) {
       return Promise.resolve(jsonResponse(body))
     }
+    if (path === '/api/appearances') {
+      return Promise.resolve(jsonResponse({ schema_version: 1, appearances: {} }))
+    }
     if (path === '/api/profiles') {
       return Promise.resolve(jsonResponse(emptyProfiles))
     }
@@ -200,6 +203,12 @@ describe('HomeView', () => {
       vi.fn((path: string) => {
         if (path === '/api/profiles') {
           return Promise.resolve(jsonResponse(emptyProfiles))
+        }
+        if (path === '/api/appearances') {
+          return Promise.resolve(jsonResponse({ schema_version: 1, appearances: {} }))
+        }
+        if (path !== '/api/tools') {
+          return Promise.reject(new TypeError(`unexpected request: ${path}`))
         }
         return new Promise<Response>((resolve) => {
           resolveList = resolve
@@ -344,6 +353,49 @@ describe('HomeView', () => {
     expect(wrapper.text()).not.toContain('Claude Code')
   })
 
+  it('keeps per-tool appearance on the list and selected detail through filtering', async () => {
+    stubApi({
+      '/api/tools': { tools: [claudeTool, codexTool], warnings: [] },
+      '/api/appearances': {
+        schema_version: 1,
+        appearances: {
+          'claude-code': {
+            accent_color: '#FFCC00',
+            background_color: '#EEE0D0',
+            bubble_preset: 'compact',
+          },
+        },
+      },
+      '/api/tools/claude-code': claudeTool,
+      '/api/tools/codex-cli': codexTool,
+    })
+    const wrapper = mountHome()
+    await flushPromises()
+
+    const claudeButton = getByRole(wrapper, 'button', { name: 'Claude Code' })
+    const codexButton = getByRole(wrapper, 'button', { name: 'Codex CLI' })
+    const claudeStyle = claudeButton.attributes('style')
+    const codexStyle = codexButton.attributes('style')
+    expect(claudeStyle).toContain('--friend-chat-background-light: #EEE0D0')
+    expect(codexStyle).not.toContain('--friend-chat-background-light: #EEE0D0')
+
+    await claudeButton.trigger('click')
+    await flushPromises()
+    const detail = wrapper.find('.home__detail')
+    expect(detail.attributes('style')).toContain('--friend-chat-background-light: #EEE0D0')
+    expect(getByRole(wrapper, 'heading', { name: '好友外观' })).toBeTruthy()
+
+    await getByRole(wrapper, 'textbox', { name: '搜索工具' }).setValue('codex')
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    await flushPromises()
+
+    expect(getByRole(wrapper, 'button', { name: 'Codex CLI' })).toBeTruthy()
+    expect(detail.attributes('style')).toContain('--friend-chat-background-light: #EEE0D0')
+    expect(getByRole(wrapper, 'button', { name: 'Codex CLI' }).attributes('style')).not.toContain(
+      '#EEE0D0',
+    )
+  })
+
   it('filters the list by search text and status without re-fetching', async () => {
     const fetchMock = stubApi({
       '/api/tools': {
@@ -374,7 +426,7 @@ describe('HomeView', () => {
     await clearButton.trigger('click')
     await flushPromises()
     expect(getByRole(wrapper, 'button', { name: 'Claude Code' })).toBeTruthy()
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('shows the global empty state and expands the install guide without requests', async () => {
@@ -387,7 +439,7 @@ describe('HomeView', () => {
     expect(toggle.attributes('aria-expanded')).toBe('false')
     expect(wrapper.text()).not.toContain('npm install -g @anthropic-ai/claude-code')
     const callsAfterLoad = fetchMock.mock.calls.length
-    expect(callsAfterLoad).toBe(2)
+    expect(callsAfterLoad).toBe(3)
 
     await toggle.trigger('click')
 

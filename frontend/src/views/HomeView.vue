@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 
+import AppearanceEditor from '../components/AppearanceEditor.vue'
 import type { ToolStatus } from '../api/tools'
 import type { SwitchApplyResponse } from '../api/switch'
 import DetailSkeleton from '../components/DetailSkeleton.vue'
@@ -13,12 +14,15 @@ import SwitchPanel from '../components/SwitchPanel.vue'
 import ToolDetailPanel from '../components/ToolDetailPanel.vue'
 import ToolStatusBadge from '../components/ToolStatusBadge.vue'
 import { useProfilesStore } from '../stores/profiles'
+import { useAppearancesStore } from '../stores/appearances'
 import { useSnapshotsStore } from '../stores/snapshots'
 import { useToolsStore } from '../stores/tools'
+import { appearanceStyle, resolveAppearance } from '../utils/appearances'
 import { normalizeStatus } from '../utils/tools'
 
 const store = useToolsStore()
 const profilesStore = useProfilesStore()
+const appearancesStore = useAppearancesStore()
 const snapshotsStore = useSnapshotsStore()
 const {
   profiles,
@@ -36,6 +40,7 @@ const {
   detailLoading,
   detailError,
 } = storeToRefs(store)
+const { appearances } = storeToRefs(appearancesStore)
 
 const searchQuery = ref('')
 const statusFilter = ref<ToolStatus | 'all'>('all')
@@ -75,6 +80,13 @@ const headerTool = computed(() => selectedTool.value ?? selectedSummary.value)
 const headerStatus = computed(() =>
   headerTool.value === null ? null : normalizeStatus(headerTool.value.status),
 )
+const headerAppearanceStyle = computed(() =>
+  headerTool.value === null
+    ? {}
+    : appearanceStyle(
+        resolveAppearance(headerTool.value, appearances.value[headerTool.value.id]),
+      ),
+)
 
 function applySearch(value: string): void {
   if (searchTimer !== null) {
@@ -111,7 +123,11 @@ async function handleApplied(result: SwitchApplyResponse): Promise<void> {
 }
 
 onMounted(() => {
-  void Promise.all([store.fetchTools(), profilesStore.fetchProfiles()])
+  void Promise.all([
+    store.fetchTools(),
+    profilesStore.fetchProfiles(),
+    appearancesStore.fetchAppearances(),
+  ])
 })
 </script>
 
@@ -182,7 +198,7 @@ onMounted(() => {
       />
     </aside>
 
-    <section class="home__detail" aria-label="详情与会话">
+    <section class="home__detail" :style="headerAppearanceStyle" aria-label="详情与会话">
       <DetailSkeleton v-if="initialLoading" />
       <p v-else-if="error !== null" class="home__placeholder">
         工具列表加载失败，请重试
@@ -211,6 +227,10 @@ onMounted(() => {
             @applied="handleApplied"
           />
           <SnapshotPanel :tool-id="headerTool.id" />
+          <AppearanceEditor
+            :tool="headerTool"
+            :override="appearances[headerTool.id]"
+          />
           <!-- 012 / 014 的会话时间线容器；本卡不渲染会话内容 -->
           <section class="home__timeline" aria-label="会话时间线"></section>
         </div>
@@ -386,6 +406,11 @@ onMounted(() => {
 }
 
 .home__detail {
+  --friend-accent: var(--friend-accent-light);
+  --friend-chat-background: var(--friend-chat-background-light);
+  --friend-chat-foreground: var(--friend-chat-foreground-light);
+  --friend-secondary: var(--friend-secondary-light);
+  --bubble-radius: var(--friend-bubble-radius);
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -399,6 +424,7 @@ onMounted(() => {
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border);
+  box-shadow: inset 3px 0 0 var(--friend-secondary);
 }
 
 .home__detail-name {
@@ -423,6 +449,10 @@ onMounted(() => {
 .home__timeline {
   flex: 1;
   min-height: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--bubble-radius, var(--radius-md));
+  background: var(--friend-chat-background);
+  color: var(--friend-chat-foreground);
 }
 
 .home__profiles-error {
@@ -454,6 +484,15 @@ onMounted(() => {
 
   .home__detail {
     flex: 1;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .home__detail {
+    --friend-accent: var(--friend-accent-dark);
+    --friend-chat-background: var(--friend-chat-background-dark);
+    --friend-chat-foreground: var(--friend-chat-foreground-dark);
+    --friend-secondary: var(--friend-secondary-dark);
   }
 }
 </style>

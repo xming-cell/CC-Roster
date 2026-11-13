@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light dark;
   /* 颜色 */
   --color-bg: #f2f3f5;
   --color-surface: #ffffff;
@@ -70,6 +71,35 @@
   --bubble-incoming-bg: var(--color-surface);
   --bubble-outgoing-bg: var(--bubble-bg);
   --bubble-time-color: var(--color-text-secondary);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #16191f;
+    --color-surface: #20242c;
+    --color-sidebar-bg: #191d24;
+    --color-text: #f2f4f7;
+    --color-text-secondary: #c0c6d0;
+    --color-border: #3a414c;
+    --color-surface-hover: #2b313b;
+    --color-accent: #84adff;
+    --color-accent-soft: #263b5c;
+    --color-danger: #f97066;
+
+    --status-loading-bg: #303743;
+    --status-loading-fg: #d0d5dd;
+    --status-ok-bg: #123b2b;
+    --status-ok-fg: #75e0a7;
+    --status-unconfigured-bg: #49320b;
+    --status-unconfigured-fg: #fedf89;
+    --status-error-bg: #4a1f1b;
+    --status-error-fg: #fda29b;
+
+    --friend-accent: var(--color-accent);
+    --friend-accent-soft: var(--color-accent-soft);
+    --friend-avatar-fg: #ffffff;
+    --bubble-time-color: var(--color-text-secondary);
+  }
 }
 
 *,

@@ -3,6 +3,8 @@ import { computed } from 'vue'
 
 import type { ToolView } from '../api/tools'
 import { normalizeStatus, statusDescription } from '../utils/tools'
+import { appearanceStyle, resolveAppearance } from '../utils/appearances'
+import { useAppearancesStore } from '../stores/appearances'
 import FriendAvatar from './FriendAvatar.vue'
 import ToolStatusBadge from './ToolStatusBadge.vue'
 
@@ -17,6 +19,10 @@ const emit = defineEmits<{
 
 const description = computed(() => statusDescription(props.tool))
 const status = computed(() => normalizeStatus(props.tool.status))
+const appearancesStore = useAppearancesStore()
+const friendStyle = computed(() =>
+  appearanceStyle(resolveAppearance(props.tool, appearancesStore.appearances[props.tool.id])),
+)
 </script>
 
 <template>
@@ -24,6 +30,7 @@ const status = computed(() => normalizeStatus(props.tool.status))
     <button
       type="button"
       class="friend-item__button"
+      :style="friendStyle"
       :aria-label="`选择 ${tool.display_name}`"
       :aria-pressed="selected"
       @click="emit('select', tool.id)"
@@ -40,7 +47,11 @@ const status = computed(() => normalizeStatus(props.tool.status))
 
 <style scoped>
 .friend-item {
+  --friend-accent: var(--friend-accent-light);
+  --friend-accent-soft: var(--friend-accent-soft-light);
+  --friend-secondary: var(--friend-secondary-light);
   border-bottom: 1px solid var(--color-border);
+  border-left: 3px solid var(--friend-secondary);
 }
 
 .friend-item__button {
@@ -63,6 +74,10 @@ const status = computed(() => normalizeStatus(props.tool.status))
 .friend-item__button:focus-visible {
   outline: 2px solid var(--friend-accent);
   outline-offset: -2px;
+}
+
+.friend-item__button[aria-pressed='true'] .friend-item__name {
+  color: var(--friend-accent);
 }
 
 .friend-item__button[aria-pressed='true'] {
@@ -92,5 +107,13 @@ const status = computed(() => normalizeStatus(props.tool.status))
   font-size: var(--font-size-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (prefers-color-scheme: dark) {
+  .friend-item {
+    --friend-accent: var(--friend-accent-dark);
+    --friend-accent-soft: var(--friend-accent-soft-dark);
+    --friend-secondary: var(--friend-secondary-dark);
+  }
 }
 </style>

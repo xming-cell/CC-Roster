@@ -42,7 +42,9 @@ describe('App', () => {
                   secret_store: { backend: 'keyring', fallback: false, message: null },
                   warnings: [],
                 }
-              : { tools: [], warnings: [] },
+              : path === '/api/appearances'
+                ? { schema_version: 1, appearances: {} }
+                : { tools: [], warnings: [] },
           ),
         ),
       ),
@@ -75,7 +77,9 @@ describe('App', () => {
                   secret_store: { backend: 'keyring', fallback: false, message: null },
                   warnings: [],
                 }
-              : { tools: [], warnings: [] },
+              : path === '/api/appearances'
+                ? { schema_version: 1, appearances: {} }
+                : { tools: [], warnings: [] },
           ),
         ),
       ),
@@ -96,7 +100,13 @@ describe('App', () => {
       'fetch',
       vi.fn((path: string) =>
         Promise.resolve(
-          jsonResponse(path === '/api/tools' ? { tools: [], warnings: [] } : { status: 'ok' }),
+          jsonResponse(
+            path === '/api/tools'
+              ? { tools: [], warnings: [] }
+              : path === '/api/appearances'
+                ? { schema_version: 1, appearances: {} }
+                : { status: 'ok' },
+          ),
         ),
       ),
     )
