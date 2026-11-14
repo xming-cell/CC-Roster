@@ -42,7 +42,7 @@ class SubprocessTerminalSpawner:
                 list(command),
                 cwd=str(cwd),
                 env=merged_env,
-                creationflags=subprocess.CREATE_NEW_CONSOLE,
+                creationflags=_windows_creation_flags(),
             )
             return process.pid
         if self._platform == "darwin":
@@ -244,6 +244,13 @@ def _blocker(code: LaunchBlockerCode, message: str) -> LaunchBlocker:
 
 def _osa_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _windows_creation_flags() -> int:
+    flag = getattr(subprocess, "CREATE_NEW_CONSOLE", None)
+    if not isinstance(flag, int):
+        raise RuntimeError("CREATE_NEW_CONSOLE is unavailable on Windows")
+    return flag
 
 
 def terminal_argv(command: Sequence[str], platform: str, cwd: Path) -> list[str]:

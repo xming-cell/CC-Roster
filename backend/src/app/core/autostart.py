@@ -9,8 +9,9 @@ import plistlib
 import shlex
 import sys
 from collections.abc import Mapping
+from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 
 class AutostartError(RuntimeError):
@@ -25,6 +26,32 @@ class AutostartBackend(Protocol):
     def disable(self) -> None: ...
 
 
+class _WinregAPI(Protocol):
+    HKEY_CURRENT_USER: int
+    KEY_SET_VALUE: int
+    REG_SZ: int
+
+    def OpenKey(
+        self, key: int, sub_key: str, reserved: int = ..., access: int = ...
+    ) -> AbstractContextManager[object]: ...
+
+    def CreateKey(self, key: int, sub_key: str) -> AbstractContextManager[object]: ...
+
+    def QueryValueEx(self, key: object, value_name: str) -> tuple[object, int]: ...
+
+    def SetValueEx(
+        self, key: object, value_name: str, reserved: int, value_type: int, value: str
+    ) -> None: ...
+
+    def DeleteValue(self, key: object, value_name: str) -> None: ...
+
+
+def _winreg_api() -> _WinregAPI:
+    import winreg
+
+    return cast(_WinregAPI, winreg)
+
+
 def default_command() -> str:
     return f'"{sys.executable}" -m app.desktop'
 
@@ -34,7 +61,7 @@ class WindowsRunBackend:
     _NAME = "CC-Roster"
 
     def is_enabled(self) -> bool:
-        import winreg
+        winreg = _winreg_api()
 
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, self._KEY) as key:
@@ -46,7 +73,7 @@ class WindowsRunBackend:
         return True
 
     def enable(self, command: str) -> None:
-        import winreg
+        winreg = _winreg_api()
 
         try:
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, self._KEY) as key:
@@ -55,7 +82,7 @@ class WindowsRunBackend:
             raise AutostartError(f"注册表写入失败: {exc}") from exc
 
     def disable(self) -> None:
-        import winreg
+        winreg = _winreg_api()
 
         try:
             with winreg.OpenKey(
