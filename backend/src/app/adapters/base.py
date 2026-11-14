@@ -1,16 +1,26 @@
-"""工具适配器协议与只读结果模型。
+"""工具适配器协议与只读 / 写入契约模型。
 
-契约见 `docs/decisions.md` 附录 A。004 只落地只读子集:
-`detect` / `read` 一律不得写盘, 也不做网络请求; 写、会话、启动能力由后续卡扩展。
+契约见 `docs/decisions.md` 附录 A。`detect` / `read` 一律不得写盘, 也不做网络请求;
+`plan` / `render` / `verify` 是 008 的纯函数写契约: `plan` 只读输入, `render` 只做
+内存渲染, 两者都不触碰磁盘。真正的原子写、快照与审计由 007 的 `WriteEngine` 负责。
 """
 
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.adapters.usage import UsageScan
+from app.core.format_edits import DocumentFormat, FieldEdit
+from app.core.paths import validate_absolute_path
 from app.core.redaction import redact_text
+from app.schemas.profile import Profile, ProfileProtocol
+from app.schemas.snapshot import SnapshotChange
+
+if TYPE_CHECKING:
+    from app.schemas.session import SessionMessage, SessionSummary
 
 # 稳定契约: 新增类型必须先扩展这里, 不允许适配器自造 code。
 WarningCode = Literal[
@@ -76,6 +86,116 @@ class ToolReadResult(BaseModel):
     warnings: list[ToolWarning] = Field(default_factory=list)
 
 
+# 写契约的稳定 code 集合; 适配器只产生其中与文件映射相关的一部分, 其余由 service
+# 在读取档案 / 密钥 / 权限时补齐。新增 code 必须先扩展这里。
+WriteBlockerCode = Literal[
+    "PROTOCOL_MISMATCH",
+    "MODEL_UNKNOWN",
+    "SECRET_MISSING",
+    "SECRET_STORE_ERROR",
+    "PARSE_ERROR",
+    "UNSUPPORTED_VERSION",
+    "UNSAFE_WRITE",
+    "PERMISSION_DENIED",
+    "FILE_NOT_WRITABLE",
+    "DIRECTORY_NOT_WRITABLE",
+    "ENV_KEY_CONFLICT",
+]
+
+WriteWarningCode = Literal[
+    "PROFILE_SECRET_EMPTY",
+    "SECRET_ENV_ONLY",
+    "NO_MODELS",
+    "MODEL_SHADOWED",
+    "OAUTH_AUTH_PRESENT",
+]
+
+
+class ToolBlocker(BaseModel):
+    """阻止 apply 的原因; `path` 指向具体目标文件 (协议 / 档案级 blocker 为 None)。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: WriteBlockerCode
+    message: str
+    path: str | None = None
+
+    @field_validator("message")
+    @classmethod
+    def _redact_message(cls, value: str) -> str:
+        return redact_text(value)
+
+
+class ToolPlanWarning(BaseModel):
+    """不阻止 apply、但必须让用户看到的降级 / 回退提示。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: WriteWarningCode
+    message: str
+
+    @field_validator("message")
+    @classmethod
+    def _redact_message(cls, value: str) -> str:
+        return redact_text(value)
+
+
+class ToolCurrentFile(BaseModel):
+    """适配器 `plan` 看到的目标文件现状; `data=None` 且 `exists=False` 表示缺失。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    exists: bool
+    data: bytes | None = Field(default=None, strict=True)
+
+    @field_validator("path")
+    @classmethod
+    def _validate_path(cls, value: str) -> str:
+        return _require_absolute(value)
+
+    @model_validator(mode="after")
+    def _check_data_consistency(self) -> "ToolCurrentFile":
+        if self.exists and self.data is None:
+            raise ValueError("存在的文件必须提供字节")
+        if not self.exists and self.data is not None:
+            raise ValueError("不存在的文件不能提供字节")
+        return self
+
+
+class ToolPlanFile(BaseModel):
+    """一个目标文件的纯内存编辑计划; 由 service 调用 `render` 得到最终字节。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    format: DocumentFormat
+    edits: list[FieldEdit] = Field(default_factory=list)
+    changes: list[SnapshotChange] = Field(default_factory=list)
+    create: bool = True
+
+    @field_validator("path")
+    @classmethod
+    def _validate_path(cls, value: str) -> str:
+        return _require_absolute(value)
+
+
+class ToolPlan(BaseModel):
+    """一次 `plan` 的完整结果: 文件计划、blockers、warnings 与重启要求。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    files: list[ToolPlanFile] = Field(default_factory=list)
+    blockers: list[ToolBlocker] = Field(default_factory=list)
+    warnings: list[ToolPlanWarning] = Field(default_factory=list)
+    restart_required: bool = True
+    restart_message: str
+
+
+def _require_absolute(value: str) -> str:
+    return validate_absolute_path(value, label="写入文件路径")
+
+
 class ToolAdapter(Protocol):
     """显式注册的适配器契约。
 
@@ -93,8 +213,37 @@ class ToolAdapter(Protocol):
     def capabilities(self) -> ToolCapabilities: ...
 
     @property
+    def supported_protocols(self) -> tuple[ProfileProtocol, ...]: ...
+
+    @property
     def managed_paths(self) -> tuple[Path, ...]: ...
 
     def detect(self) -> ToolDetection: ...
 
     def read(self) -> ToolReadResult: ...
+
+    def list_sessions(self) -> list["SessionSummary"]: ...
+
+    def read_session_messages(
+        self, session_id: str, *, offset: int, limit: int
+    ) -> tuple[list["SessionMessage"], bool, list[ToolWarning]]: ...
+
+    def usage_scan(self) -> UsageScan: ...
+
+    def plan(
+        self,
+        profile: Profile,
+        *,
+        secret: str | None,
+        model: str | None,
+        current: Mapping[str, ToolCurrentFile],
+    ) -> ToolPlan: ...
+
+    def render(self, plan_file: ToolPlanFile, original_bytes: bytes) -> bytes: ...
+
+    def verify(
+        self,
+        plan_file: ToolPlanFile,
+        original_bytes: bytes,
+        rendered_bytes: bytes,
+    ) -> None: ...

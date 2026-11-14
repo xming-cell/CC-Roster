@@ -5,14 +5,27 @@ from pathlib import Path, PurePath
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.appearances import router as appearances_router
+from app.api.audit import router as audit_router
+from app.api.chat import router as chat_router
 from app.api.error_handlers import register_exception_handlers
+from app.api.group_chat import router as group_chat_router
 from app.api.health import router as health_router
+from app.api.launcher import router as launcher_router
+from app.api.onboarding import router as onboarding_router
+from app.api.profiles import router as profiles_router
+from app.api.sessions import router as sessions_router
+from app.api.settings import router as settings_router
+from app.api.snapshots import router as snapshots_router
+from app.api.switch import router as switch_router
 from app.api.tools import router as tools_router
+from app.api.usage import router as usage_router
 from app.core.config import settings
 from app.core.db import bootstrap_database
 from app.core.logging import configure_logging
 from app.core.paths import ensure_data_dirs, resolve_data_dir
-from app.core.security import RequestBodyLimitMiddleware
+from app.core.security import ReadOnlyMiddleware, RequestBodyLimitMiddleware
+from app.repositories.migrations import APP_MIGRATIONS
 
 _ALLOWED_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 
@@ -20,7 +33,10 @@ _ALLOWED_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 def initialize_app_data(data_dir: PurePath) -> Path:
     """创建数据目录并 bootstrap SQLite; 重复调用幂等。"""
     root = ensure_data_dirs(data_dir)
-    bootstrap_database(root / "db" / "app.sqlite3").close()
+    bootstrap_database(
+        root / "db" / "app.sqlite3",
+        migrations=APP_MIGRATIONS,
+    ).close()
     return root
 
 
@@ -36,6 +52,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
     # 先加内层, 后加外层: CORS 需要包住请求体限制, 413 响应也带白名单头
     app.add_middleware(RequestBodyLimitMiddleware, max_body_bytes=settings.max_request_body_bytes)
+    app.add_middleware(ReadOnlyMiddleware, data_dir=Path(resolve_data_dir()))
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -44,7 +61,19 @@ def create_app() -> FastAPI:
     )
     register_exception_handlers(app)
     app.include_router(health_router)
+    app.include_router(appearances_router)
     app.include_router(tools_router)
+    app.include_router(profiles_router)
+    app.include_router(sessions_router)
+    app.include_router(launcher_router)
+    app.include_router(chat_router)
+    app.include_router(settings_router)
+    app.include_router(group_chat_router)
+    app.include_router(usage_router)
+    app.include_router(onboarding_router)
+    app.include_router(snapshots_router)
+    app.include_router(switch_router)
+    app.include_router(audit_router)
     return app
 
 

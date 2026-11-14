@@ -4,6 +4,8 @@
 统一返回 `{code: "PAYLOAD_TOO_LARGE", message}`, 避免本地接口被误用撑爆内存。
 """
 
+from pathlib import Path
+
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core.errors import ErrorResponse
@@ -77,12 +79,84 @@ async def _read_body(receive: Receive, limit: int) -> tuple[bytes | None, bool]:
 
 
 async def _send_too_large(send: Send) -> None:
-    payload = ErrorResponse(code=PAYLOAD_TOO_LARGE, message=_TOO_LARGE_MESSAGE).model_dump_json()
+    payload = ErrorResponse(
+        code=PAYLOAD_TOO_LARGE,
+        message=_TOO_LARGE_MESSAGE,
+    ).model_dump_json(exclude_none=True)
     body = payload.encode("utf-8")
     await send(
         {
             "type": "http.response.start",
             "status": 413,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode("ascii")),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": body})
+
+
+READ_ONLY_CODE = "READ_ONLY_MODE"
+_WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+# 这些端点不修改被管理工具或档案配置, 只读模式下仍可用
+_READ_ONLY_ALLOWED_PREFIXES: tuple[str, ...] = (
+    "/api/settings",
+    "/api/health",
+    "/api/chat",
+    "/api/launch",
+    "/api/switch/preview",
+    "/api/onboarding",
+)
+
+
+class ReadOnlyMiddleware:
+    """全局只读模式: 配置写端点统一 403, 读 / 预览 / 体检仍可用。"""
+
+    def __init__(self, app: ASGIApp, data_dir: Path) -> None:
+        self.app = app
+        self._data_dir = data_dir
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["method"] not in _WRITE_METHODS:
+            await self.app(scope, receive, send)
+            return
+        path = str(scope["path"])
+        if not path.startswith("/api/") or _write_allowed(path):
+            await self.app(scope, receive, send)
+            return
+
+        from app.repositories.settings import SettingsRepository
+
+        try:
+            read_only = SettingsRepository(self._data_dir).load().read_only
+        except Exception:
+            await _send_error(send, 500, "SETTINGS_UNREADABLE", "设置文件无法读取")
+            return
+        if not read_only:
+            await self.app(scope, receive, send)
+            return
+        await _send_error(
+            send,
+            403,
+            READ_ONLY_CODE,
+            "只读模式已开启: 请先在设置页关闭只读后再写入",
+        )
+
+
+def _write_allowed(path: str) -> bool:
+    if any(path.startswith(prefix) for prefix in _READ_ONLY_ALLOWED_PREFIXES):
+        return True
+    return path.endswith("/health-check")
+
+
+async def _send_error(send: Send, status: int, code: str, message: str) -> None:
+    payload = ErrorResponse(code=code, message=message).model_dump_json(exclude_none=True)
+    body = payload.encode("utf-8")
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status,
             "headers": [
                 (b"content-type", b"application/json"),
                 (b"content-length", str(len(body)).encode("ascii")),

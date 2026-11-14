@@ -63,3 +63,19 @@ def ensure_data_dirs(data_dir: PurePath) -> Path:
     for name in _DATA_SUBDIRS:
         (root / name).mkdir(exist_ok=True)
     return root
+
+
+def validate_absolute_path(value: str, *, label: str = "路径") -> str:
+    """校验绝对路径字符串, 拒绝相对路径与 `..` 段; 不触碰文件系统。"""
+    path = Path(value)
+    if not path.is_absolute():
+        raise ValueError(f"{label}必须是绝对路径")
+    if ".." in path.parts:
+        raise ValueError(f"{label}不能包含 .. 段")
+    return str(path)
+
+
+def resolve_absolute_path(path: Path, *, label: str = "路径") -> Path:
+    """校验并解析绝对路径的 symlink; 目标文件可以不存在。"""
+    value = validate_absolute_path(str(path), label=label)
+    return Path(value).resolve(strict=False)

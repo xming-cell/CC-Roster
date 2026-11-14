@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.core.errors import AppError, ErrorResponse
+from app.core.errors import AppError, ErrorDetails, ErrorResponse
 from app.core.redaction import redact_text
 
 logger = logging.getLogger(__name__)
@@ -35,10 +35,15 @@ def _error_response(
     code: str,
     message: str,
     headers: Mapping[str, str] | None = None,
+    details: ErrorDetails | None = None,
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
-        content=ErrorResponse(code=code, message=redact_text(message)).model_dump(),
+        content=ErrorResponse(
+            code=code,
+            message=redact_text(message),
+            details=details,
+        ).model_dump(exclude_none=True),
         headers=headers,
     )
 
@@ -55,7 +60,12 @@ def _format_validation_error(exc: RequestValidationError) -> str:
 
 async def _handle_app_error(_request: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, AppError)
-    return _error_response(exc.status_code, exc.code, exc.message)
+    return _error_response(
+        exc.status_code,
+        exc.code,
+        exc.message,
+        details=exc.details,
+    )
 
 
 async def _handle_validation_error(_request: Request, exc: Exception) -> JSONResponse:

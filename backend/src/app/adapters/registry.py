@@ -14,6 +14,8 @@ from pathlib import Path
 from app.adapters.base import ToolAdapter, ToolWarning
 from app.adapters.claude_code import ClaudeCodeAdapter, resolve_claude_config_dir
 from app.adapters.codex_cli import CodexCliAdapter, resolve_codex_config_dir
+from app.adapters.gemini_cli import GeminiCliAdapter, resolve_gemini_config_dir
+from app.adapters.opencode import OpenCodeAdapter, resolve_opencode_config_dir
 from app.core.errors import AppError
 
 WhichFn = Callable[[str], str | None]
@@ -65,10 +67,28 @@ def _build_codex_cli(context: AdapterContext) -> CodexCliAdapter:
     )
 
 
+def _build_gemini_cli(context: AdapterContext) -> GeminiCliAdapter:
+    return GeminiCliAdapter(
+        resolve_gemini_config_dir(environ=context.environ, home=context.home),
+        which=context.which,
+        environ=context.environ,
+    )
+
+
+def _build_opencode(context: AdapterContext) -> OpenCodeAdapter:
+    return OpenCodeAdapter(
+        resolve_opencode_config_dir(environ=context.environ, home=context.home),
+        which=context.which,
+        environ=context.environ,
+    )
+
+
 # 显式清单: 新增适配器在这里追加, 不做动态发现。
 _ADAPTER_REGISTRATIONS: tuple[AdapterRegistration, ...] = (
     AdapterRegistration("claude-code", _build_claude_code),
     AdapterRegistration("codex-cli", _build_codex_cli),
+    AdapterRegistration("gemini-cli", _build_gemini_cli),
+    AdapterRegistration("opencode", _build_opencode),
 )
 
 

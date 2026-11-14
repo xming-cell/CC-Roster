@@ -145,5 +145,10 @@ def test_default_registry_registers_claude_and_codex_in_order(tmp_path: Path) ->
 
     registry = build_registry(context=context)
 
-    assert [adapter.id for adapter in registry.adapters] == ["claude-code", "codex-cli"]
+    assert [adapter.id for adapter in registry.adapters] == [
+        "claude-code",
+        "codex-cli",
+        "gemini-cli",
+        "opencode",
+    ]
     assert registry.warnings == ()

@@ -7,9 +7,20 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
+    # ADR-006: 跨平台 OS 凭据库, 避免明文落盘, 无需自研系统 API; 不可用时回退 0600 文件
+    "keyring>=25.7.0",
+    # round-trip TOML, 保留注释 / 键序 / 未知字段, 避免 N-4 破坏用户配置
+    "tomlkit>=0.13",
 ]
 
 [dependency-groups]
+# 015: 桌面薄壳的 WebView 窗口; 可选安装, 不影响后端 / 前端验收
+desktop = [
+    "pywebview>=5.3",
+    "pystray>=0.19",
+    "pillow>=10.4",
+    "keyboard>=0.13.5",
+]
 dev = [
     "pytest>=8.3",
     "httpx>=0.27",

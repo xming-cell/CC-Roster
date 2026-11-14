@@ -67,10 +67,10 @@ def test_list_tools_returns_views_and_timezone_aware_timestamps(tmp_path: Path) 
     assert claude["warnings"] == []
     assert claude["capabilities"] == {
         "read": True,
-        "write": False,
-        "sessions": False,
-        "launch": False,
-        "write_mode": "none",
+        "write": True,
+        "sessions": True,
+        "launch": True,
+        "write_mode": "managed_fields",
     }
 
     modified = datetime.fromisoformat(claude["last_modified"].replace("Z", "+00:00"))
@@ -144,6 +144,35 @@ def test_uninstalled_tool_detail_returns_404(tmp_path: Path) -> None:
 
     assert resp.status_code == 404
     assert resp.json()["code"] == "TOOL_NOT_FOUND"
+
+
+def test_list_tools_accepts_combined_text_and_status_filters(tmp_path: Path) -> None:
+    claude_dir = tmp_path / "claude"
+    seed_claude(claude_dir)
+    codex_dir = tmp_path / "codex"
+    seed_codex(codex_dir)
+
+    resp = make_client(claude_adapter(claude_dir), codex_adapter(codex_dir)).get(
+        "/api/tools",
+        params={
+            "name": "  CLAUDE  ",
+            "provider": "anthropic",
+            "model": "SONNET",
+            "status": "ok",
+        },
+    )
+
+    assert resp.status_code == 200
+    assert [tool["id"] for tool in resp.json()["tools"]] == ["claude-code"]
+
+
+def test_list_tools_rejects_invalid_status_filter(tmp_path: Path) -> None:
+    claude_dir = tmp_path / "claude"
+    seed_claude(claude_dir)
+
+    resp = make_client(claude_adapter(claude_dir)).get("/api/tools", params={"status": "unknown"})
+
+    assert resp.status_code == 422
 
 
 def test_adapter_failure_is_isolated_into_top_level_warning(tmp_path: Path) -> None:

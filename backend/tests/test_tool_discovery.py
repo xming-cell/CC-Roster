@@ -87,10 +87,10 @@ def test_configured_tool_view_exposes_managed_fields(tmp_path: Path) -> None:
     assert view.secret_preview == "sk-a****cdef"
     assert view.warnings == []
     assert view.capabilities.read is True
-    assert view.capabilities.write is False
-    assert view.capabilities.sessions is False
-    assert view.capabilities.launch is False
-    assert view.capabilities.write_mode == "none"
+    assert view.capabilities.write is True
+    assert view.capabilities.sessions is True
+    assert view.capabilities.launch is True
+    assert view.capabilities.write_mode == "managed_fields"
 
 
 def test_broken_config_marks_only_that_tool_as_error(tmp_path: Path) -> None:
@@ -295,6 +295,38 @@ def test_list_reflects_config_changes_between_calls(tmp_path: Path) -> None:
     path.write_text(json.dumps({"model": "second-model"}), encoding="utf-8")
 
     assert service.list_tools().tools[0].model == "second-model"
+
+
+def test_list_tools_filters_by_name_provider_model_and_status(tmp_path: Path) -> None:
+    claude_dir = tmp_path / "claude"
+    seed_claude(claude_dir)
+    codex_dir = tmp_path / "codex"
+    seed_codex(codex_dir)
+
+    response = make_service(claude_adapter(claude_dir), codex_adapter(codex_dir)).list_tools(
+        name="  claude  ",
+        provider="anthropic",
+        model="sonnet",
+        status="ok",
+    )
+
+    assert [tool.id for tool in response.tools] == ["claude-code"]
+
+
+def test_list_tools_ignores_blank_filters_and_keeps_original_order(tmp_path: Path) -> None:
+    claude_dir = tmp_path / "claude"
+    seed_claude(claude_dir)
+    codex_dir = tmp_path / "codex"
+    seed_codex(codex_dir)
+
+    response = make_service(claude_adapter(claude_dir), codex_adapter(codex_dir)).list_tools(
+        name=" ",
+        provider="",
+        model="\t",
+        status=None,
+    )
+
+    assert [tool.id for tool in response.tools] == ["claude-code", "codex-cli"]
 
 
 def test_warning_code_contract_covers_required_failures() -> None:

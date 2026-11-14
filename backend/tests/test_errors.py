@@ -1,10 +1,18 @@
+from pathlib import Path
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
-from app.core.errors import AppError
+from app.core.errors import (
+    AppError,
+    ErrorDetails,
+    FileConflict,
+    WriteConflict,
+)
 from app.main import create_app
+from app.schemas.snapshot import FileObservation
 
 
 class Echo(BaseModel):
@@ -33,6 +41,67 @@ def build_test_app() -> FastAPI:
     @app.get("/test/secret-error")
     async def secret_error() -> Echo:
         raise AppError("AUTH_FAILED", "密钥 sk-live-abcdefghijklmnop 无效")
+
+    @app.get("/test/details-conflict")
+    async def details_conflict() -> Echo:
+        missing = str(Path.cwd() / "missing.json")
+        created = str(Path.cwd() / "created.json")
+        changed = str(Path.cwd() / "changed.json")
+        raise WriteConflict(
+            [
+                FileConflict(
+                    path=missing,
+                    reason="MISSING",
+                    expected=FileObservation(
+                        path=missing,
+                        exists=True,
+                        sha256="a" * 64,
+                        size=3,
+                        mtime_ns=1,
+                    ),
+                    actual=FileObservation(path=missing, exists=False),
+                ),
+                FileConflict(
+                    path=created,
+                    reason="CREATED",
+                    expected=FileObservation(path=created, exists=False),
+                    actual=FileObservation(
+                        path=created,
+                        exists=True,
+                        sha256="b" * 64,
+                        size=4,
+                        mtime_ns=2,
+                    ),
+                ),
+                FileConflict(
+                    path=changed,
+                    reason="CONTENT_CHANGED",
+                    expected=FileObservation(
+                        path=changed,
+                        exists=True,
+                        sha256="c" * 64,
+                        size=5,
+                        mtime_ns=3,
+                    ),
+                    actual=FileObservation(
+                        path=changed,
+                        exists=True,
+                        sha256="d" * 64,
+                        size=6,
+                        mtime_ns=4,
+                    ),
+                ),
+            ]
+        )
+
+    @app.get("/test/details-stale")
+    async def details_stale() -> Echo:
+        raise AppError(
+            "SWITCH_PREVIEW_STALE",
+            "预览已过期",
+            409,
+            details=ErrorDetails(stale_paths=[str(Path.cwd() / "settings.json")]),
+        )
 
     return app
 
@@ -89,6 +158,50 @@ def test_app_error_message_is_redacted_in_response(client: TestClient) -> None:
     body = resp.json()
     assert body["code"] == "AUTH_FAILED"
     assert "sk-l****mnop" in body["message"]
+
+
+def test_conflict_error_serializes_all_conflict_reasons(client: TestClient) -> None:
+    resp = client.get("/test/details-conflict")
+
+    assert resp.status_code == 409
+    body = resp.json()
+    assert set(body) == {"code", "message", "details"}
+    assert body["code"] == "WRITE_CONFLICT"
+    assert set(body["details"]) == {"conflicts"}
+    conflicts = body["details"]["conflicts"]
+    assert [item["reason"] for item in conflicts] == [
+        "MISSING",
+        "CREATED",
+        "CONTENT_CHANGED",
+    ]
+    observation_keys = {"path", "exists", "sha256", "size", "mtime_ns"}
+    for item in conflicts:
+        assert set(item) == {"path", "reason", "expected", "actual"}
+        for observation in (item["expected"], item["actual"]):
+            assert {"path", "exists", "size"} <= set(observation) <= observation_keys
+    missing, created, changed = conflicts
+    assert missing["expected"]["exists"] is True
+    assert missing["actual"]["exists"] is False
+    assert "sha256" not in missing["actual"]
+    assert "mtime_ns" not in missing["actual"]
+    assert missing["expected"]["sha256"] == "a" * 64
+    assert created["expected"]["exists"] is False
+    assert created["actual"]["exists"] is True
+    assert created["actual"]["sha256"] == "b" * 64
+    assert changed["expected"]["sha256"] == "c" * 64
+    assert changed["actual"]["sha256"] == "d" * 64
+    assert changed["expected"]["mtime_ns"] == 3
+    assert changed["actual"]["mtime_ns"] == 4
+
+
+def test_stale_error_details_contain_only_stale_paths(client: TestClient) -> None:
+    resp = client.get("/test/details-stale")
+
+    assert resp.status_code == 409
+    body = resp.json()
+    assert set(body) == {"code", "message", "details"}
+    assert body["code"] == "SWITCH_PREVIEW_STALE"
+    assert body["details"] == {"stale_paths": [str(Path.cwd() / "settings.json")]}
 
 
 def test_unknown_exception_returns_generic_500_without_internals(client: TestClient) -> None:
