@@ -9,6 +9,8 @@
 
 ## 验收记录
 
+CI 复验：run 43699039463 在 ubuntu-latest / macos-latest / windows-latest 三个 job 均为 `success`。
+
 T3 命令：`cd backend && uv run pytest tests/test_settings_api.py tests/test_snapshots_api.py tests/test_paths.py tests/test_release_baseline.py tests/test_degradation_matrix.py tests/test_secret_scan.py -q`
 
 ```text

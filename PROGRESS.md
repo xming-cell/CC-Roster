@@ -13,7 +13,7 @@
 - 最近一次验收：见 `specs/004-tool-discovery/tasks.md` 的「验收记录」（`check.py` 全绿）。
 - 任务卡 005a（前端信息架构基线）与 023（跨平台 CI 对齐）已完成并记录验收；`specs/CURRENT` 已从 023 切到 024。
 - 任务卡 024（V2 任务计划重排）产出 `docs/task-plan2.md`：按新 IA 重排剩余工作，区分前端重建、后端增量与待拍板决策；本卡只改文档，不动业务代码。D-9～D-17 仍待用户确认，确认前不进入 102 及后续实现。
-- 任务卡 025（CI 测试隔离）完成：新增 `backend/tests/conftest.py` autouse fixture，把 `LOCALAPPDATA` / `XDG_DATA_HOME` / `HOME` 统一指向每个测试的临时目录；`test_settings_api.py` 改用 `resolve_data_dir()` 推导 settings 路径。修复 macOS CI 上 settings 的 `read_only=true` 泄漏到快照测试的问题；本地 `check.py` 全绿，等待三平台 CI 复验。
+- 任务卡 025（CI 测试隔离）完成：新增 `backend/tests/conftest.py` autouse fixture，把 `LOCALAPPDATA` / `XDG_DATA_HOME` / `HOME` 统一指向每个测试的临时目录；`test_settings_api.py` 改用 `resolve_data_dir()` 推导 settings 路径。修复 macOS CI 上 settings 的 `read_only=true` 泄漏到快照测试的问题；本地 `check.py` 全绿，三平台 CI（ubuntu-latest / macos-latest / windows-latest）已通过（run 43699039463）。
 
 ## 下一个可执行命令
 
