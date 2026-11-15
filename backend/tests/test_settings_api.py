@@ -6,20 +6,20 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app.core.paths import resolve_data_dir
 from app.main import create_app
 
 
-def client_for(tmp_path: Path, monkeypatch) -> TestClient:
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+def client_for() -> TestClient:
     return TestClient(create_app())
 
 
-def settings_path(tmp_path: Path) -> Path:
-    return tmp_path / "CC-Roster" / "settings.json"
+def settings_path() -> Path:
+    return Path(resolve_data_dir()) / "settings.json"
 
 
-def test_toggle_read_only_blocks_config_writes_and_keeps_reads(tmp_path: Path, monkeypatch) -> None:
-    client = client_for(tmp_path, monkeypatch)
+def test_toggle_read_only_blocks_config_writes_and_keeps_reads(tmp_path: Path) -> None:
+    client = client_for()
 
     initial = client.get("/api/settings")
     enabled = client.put("/api/settings", json={"read_only": True})
@@ -51,8 +51,8 @@ def test_toggle_read_only_blocks_config_writes_and_keeps_reads(tmp_path: Path, m
     assert chat.status_code != 403
 
 
-def test_disabling_read_only_restores_writes(tmp_path: Path, monkeypatch) -> None:
-    client = client_for(tmp_path, monkeypatch)
+def test_disabling_read_only_restores_writes() -> None:
+    client = client_for()
     client.put("/api/settings", json={"read_only": True})
 
     disabled = client.put("/api/settings", json={"read_only": False})
@@ -70,9 +70,9 @@ def test_disabling_read_only_restores_writes(tmp_path: Path, monkeypatch) -> Non
     assert created.status_code == 201
 
 
-def test_corrupt_settings_fail_closed(tmp_path: Path, monkeypatch) -> None:
-    client = client_for(tmp_path, monkeypatch)
-    path = settings_path(tmp_path)
+def test_corrupt_settings_fail_closed() -> None:
+    client = client_for()
+    path = settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{not json", encoding="utf-8")
 
@@ -84,11 +84,11 @@ def test_corrupt_settings_fail_closed(tmp_path: Path, monkeypatch) -> None:
     assert read.status_code == 500
 
 
-def test_settings_file_is_atomic_and_readable(tmp_path: Path, monkeypatch) -> None:
-    client = client_for(tmp_path, monkeypatch)
+def test_settings_file_is_atomic_and_readable() -> None:
+    client = client_for()
     client.put("/api/settings", json={"read_only": True})
 
-    raw = json.loads(settings_path(tmp_path).read_text(encoding="utf-8"))
+    raw = json.loads(settings_path().read_text(encoding="utf-8"))
 
     assert raw["schema_version"] == 1
     assert raw["read_only"] is True

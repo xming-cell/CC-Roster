@@ -13,6 +13,7 @@
 - 最近一次验收：见 `specs/004-tool-discovery/tasks.md` 的「验收记录」（`check.py` 全绿）。
 - 任务卡 005a（前端信息架构基线）与 023（跨平台 CI 对齐）已完成并记录验收；`specs/CURRENT` 已从 023 切到 024。
 - 任务卡 024（V2 任务计划重排）产出 `docs/task-plan2.md`：按新 IA 重排剩余工作，区分前端重建、后端增量与待拍板决策；本卡只改文档，不动业务代码。D-9～D-17 仍待用户确认，确认前不进入 102 及后续实现。
+- 任务卡 025（CI 测试隔离）完成：新增 `backend/tests/conftest.py` autouse fixture，把 `LOCALAPPDATA` / `XDG_DATA_HOME` / `HOME` 统一指向每个测试的临时目录；`test_settings_api.py` 改用 `resolve_data_dir()` 推导 settings 路径。修复 macOS CI 上 settings 的 `read_only=true` 泄漏到快照测试的问题；本地 `check.py` 全绿，等待三平台 CI 复验。
 
 ## 下一个可执行命令
 
@@ -27,7 +28,7 @@ uv run python scripts/check.py
 2. 把 `specs/CURRENT` 改成 `NNN`（不改则 `guard scope` 会跳过范围校验）；
 3. 只动 scope 内的文件，做完把 check.py 输出贴进 `tasks.md`。
 
-卡片状态：`specs/003-local-infra`、`specs/004-tool-discovery`、`specs/005a-frontend-design`、`specs/023-ci-parity`、`specs/024-replan-v2` 均已完成；`specs/CURRENT` 现指向 024。下一张卡应从 `docs/task-plan2.md` 的 100 号开始，先确认 D-9～D-17 再开实现卡。开新卡时按上面的固定动作建目录、改 `specs/CURRENT`，再按新卡 `tasks.md` 顺序推进。
+卡片状态：`specs/003-local-infra`、`specs/004-tool-discovery`、`specs/005a-frontend-design`、`specs/023-ci-parity`、`specs/024-replan-v2`、`specs/025-ci-test-isolation` 均已完成；`specs/CURRENT` 现指向 025。下一张卡应从 `docs/task-plan2.md` 的 100 号开始，先确认 D-9～D-17 再开实现卡。开新卡时按上面的固定动作建目录、改 `specs/CURRENT`，再按新卡 `tasks.md` 顺序推进。
 
 ## 已知坑
 
