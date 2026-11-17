@@ -26,6 +26,7 @@
 - 2026-11-17 027 T1–T7 已提交：`0e9fb43`；026 → 100 目录编号对齐提交：`ceec53c`。028 卡（目录 `specs/102-multi-provider-bindings`，对应 `docs/task-plan2.md` 的 102 号规划卡）已开卡，T1–T7 已完成，`specs/CURRENT` 现指向 102。
 - 2026-11-17 028 / `specs/102-multi-provider-bindings` T1–T7 完成：`ProfileStore` 放宽为一工具多绑定（`(tool_id, profile_id)` 唯一、每工具至多一条 active），`ProfileRepository` 增加按工具查询与 `PROFILE_STORE_INVALID` 可读写入错误；`PUT /api/tools/{tool_id}/profile` 只新增绑定，新增 `DELETE /api/tools/{tool_id}/profiles/{profile_id}` 精确解绑，旧 `DELETE .../profile` 改为必须带 `profile_id` 查询参数；`SwitchService._save_binding` 只切换目标 binding 的 active，保留 `bound_at` 与其他绑定；`GET /api/profiles?tool_id=` 支持按工具过滤。新增 23 个多绑定测试，后端 663 passed；T7 手动验收已用 TestClient 跑完并回填 `tasks.md`。`uv run python scripts/check.py` 退出码 0。
 - 断言变更说明（规则 4）：`test_profile_bindings.py::test_rebinding_tool_to_another_profile_replaces_old_binding` 改为 `test_binding_second_profile_keeps_first_binding`，原断言固化「绑定 B 会替换 A」的单绑定旧语义，与 ADR-010 / 028 DoD「新增绑定不删除旧绑定」直接冲突；`test_profiles_repository.py::test_mutate_rejects_store_invariant_breach_without_writing` 由期望裸 `ValidationError` 改为期望 `PROFILE_STORE_INVALID` 的 `AppError`，依据 028 DoD「读取 / 写入校验均拒绝，报可读的档案库错误」。
+- 2026-11-17 029 / `specs/103-provider-page` 开卡（对应 `docs/task-plan2.md` 的 103 号规划卡）：正式编号 029，依赖 101 T1–T7 与 028；只动 `frontend/src/**`。卡内已定：两栏「工具 → 该工具供应商」布局；新增 / 复制后自动绑定当前工具但保持 `active=false`；提供「从当前工具移除」精确解绑；删除遇 409 `PROFILE_IN_USE` 时展示占用工具并二次确认；切换 / 应用 / 写工具配置留给 104。T1–T8 待做。
 
 ## 下一个可执行命令
 
@@ -40,7 +41,7 @@ uv run python scripts/check.py
 2. 把 `specs/CURRENT` 改成 `NNN`（不改则 `guard scope` 会跳过范围校验）；
 3. 只动 scope 内的文件，做完把 check.py 输出贴进 `tasks.md`。
 
-卡片状态：`specs/003-local-infra`、`specs/004-tool-discovery`、`specs/005a-frontend-design`、`specs/023-ci-parity`、`specs/024-replan-v2`、`specs/025-ci-test-isolation`、`specs/100-v2-decision-baseline` 均已完成；`specs/101-workbench-shell`（正式编号 027，对应 `docs/task-plan2.md` 的 101 号规划卡）T1–T7 已提交、T8 手动验收待做；`specs/102-multi-provider-bindings`（正式编号 028，对应 102 号规划卡）T1–T7 已完成，`specs/CURRENT` 现指向 102。开工时按 `specs/<CURRENT>/tasks.md` 顺序推进，完成后更新 `tasks.md` 与 `PROGRESS.md`。
+卡片状态：`specs/003-local-infra`、`specs/004-tool-discovery`、`specs/005a-frontend-design`、`specs/023-ci-parity`、`specs/024-replan-v2`、`specs/025-ci-test-isolation`、`specs/100-v2-decision-baseline` 均已完成；`specs/101-workbench-shell`（正式编号 027，对应 `docs/task-plan2.md` 的 101 号规划卡）T1–T7 已提交、T8 手动验收待做；`specs/102-multi-provider-bindings`（正式编号 028，对应 102 号规划卡）T1–T7 已完成并提交；`specs/103-provider-page`（正式编号 029，对应 103 号规划卡）已开卡，T1–T8 待做，`specs/CURRENT` 现指向 103。开工时按 `specs/<CURRENT>/tasks.md` 顺序推进，完成后更新 `tasks.md` 与 `PROGRESS.md`。
 
 ## 已知坑
 
@@ -54,7 +55,7 @@ uv run python scripts/check.py
 
 ## 未决问题
 
-- D-9～D-17 已定稿（ADR-009～014），不再阻塞后续实现卡；101 号规划卡已落为正式卡 027（目录 `specs/101-workbench-shell`），T1–T7 已提交（`0e9fb43`），T8 手动验收仍待做。028 卡（目录 `specs/102-multi-provider-bindings`，对应 102 号规划卡）T1–T7 已完成并提交，`tasks.md` 与手动验收表已回填；下一步进入 103。
+- D-9～D-17 已定稿（ADR-009～014），不再阻塞后续实现卡；101 号规划卡已落为正式卡 027（目录 `specs/101-workbench-shell`），T1–T7 已提交（`0e9fb43`），T8 手动验收仍待做。028 卡（目录 `specs/102-multi-provider-bindings`，对应 102 号规划卡）T1–T7 已完成并提交，`tasks.md` 与手动验收表已回填；103 卡（目录 `specs/103-provider-page`，正式编号 029）已开卡，T1–T8 待做。103 的关键边界：只做供应商页与绑定关系，不做切换 / 应用 / 写工具配置（104）。
 - 前端 e2e（Playwright）尚未接入 `check.py`。
 - 后端还没有 `repositories/` 层；数据库迁移机制已在 003 就绪，但尚无业务表迁移，`rules/backend.md` 里的数据访问约定暂时无代码可对照。
 - `guard forbidden` 目前不拦"注释掉的断言"，这个规则仍靠人看 diff。
