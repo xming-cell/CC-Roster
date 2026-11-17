@@ -39,7 +39,7 @@ def test_initialize_app_data_applies_audit_migration(tmp_path: Path) -> None:
 
     connection = sqlite3.connect(db_path)
     try:
-        assert connection.execute("PRAGMA user_version").fetchone() == (1,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (2,)
         indexes = {
             str(row[0])
             for row in connection.execute(

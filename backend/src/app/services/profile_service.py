@@ -5,14 +5,17 @@
 本层不依赖 FastAPI, 也不直接读写文件。
 """
 
+import logging
 import uuid
 from collections.abc import Iterable, Sequence
 
 from app.core.clock import utc_now
 from app.core.errors import AppError
 from app.core.redaction import redact_secret
+from app.repositories.audit import AuditRepository
 from app.repositories.profiles import ProfileRepository
 from app.repositories.secrets import SecretStore, rollback_secret
+from app.schemas.audit import AuditAction
 from app.schemas.profile import (
     MAX_PROFILE_NAME_LENGTH,
     BindingDeleteResponse,
@@ -35,6 +38,8 @@ from app.schemas.profile import (
 from app.schemas.tool import ToolView
 from app.services.tool_discovery import ToolDiscoveryService
 
+logger = logging.getLogger(__name__)
+
 
 class ProfileService:
     """档案用例边界; 仓储、密钥与工具发现都通过构造参数注入。"""
@@ -44,10 +49,12 @@ class ProfileService:
         repository: ProfileRepository,
         secrets: SecretStore,
         tools: ToolDiscoveryService,
+        audit: AuditRepository,
     ) -> None:
         self._repository = repository
         self._secrets = secrets
         self._tools = tools
+        self._audit = audit
 
     def list_profiles(self, tool_id: str | None = None) -> ProfileListResponse:
         store = self._repository.load()
@@ -98,6 +105,13 @@ class ProfileService:
         except Exception:
             _rollback_new_secret(self._secrets, secret_ref)
             raise
+        self._record_audit(
+            action="profile_create",
+            tool_id=None,
+            profile_id=profile.id,
+            fields=["name", "protocol", "base_url", "models"],
+            message=f"新增供应商: {profile.name}",
+        )
         return self._build_view(profile, [], {})
 
     def update_profile(self, profile_id: str, payload: ProfileUpdate) -> ProfileView:
@@ -159,6 +173,13 @@ class ProfileService:
             except AppError:
                 cleanup_failed = True
 
+        self._record_audit(
+            action="profile_update",
+            tool_id=None,
+            profile_id=updated.id,
+            fields=sorted(payload.model_fields_set),
+            message=f"更新供应商: {updated.name}",
+        )
         view = self._build_view(
             updated,
             self._repository.list_bindings(),
@@ -227,6 +248,12 @@ class ProfileService:
             _rollback_new_secret(self._secrets, new_ref)
             raise
 
+        self._record_audit(
+            action="profile_copy",
+            tool_id=None,
+            profile_id=copied.id,
+            message=f"复制供应商: {copied.name}",
+        )
         view = self._build_view(copied, [], {})
         view.warnings.extend(source_warnings)
         return view
@@ -255,6 +282,13 @@ class ProfileService:
         profile, bindings = self._repository.mutate(change)
         if profile.secret_ref is not None:
             self._secrets.delete(profile.secret_ref)
+        self._record_audit(
+            action="profile_delete",
+            tool_id=None,
+            profile_id=profile.id,
+            fields=[f"binding:{binding.tool_id}" for binding in bindings],
+            message=f"删除供应商: {profile.name}",
+        )
         return ProfileDeleteResponse(
             deleted=True,
             unbound_tools=_tool_refs(bindings, discovered),
@@ -264,8 +298,8 @@ class ProfileService:
         """把已安装工具绑到档案; 只新增绑定, 不删除同工具的其他供应商。"""
         self._tools.get_tool(tool_id)
 
-        def change(store: ProfileStore) -> ToolBinding:
-            _find_profile(store.profiles, profile_id)
+        def change(store: ProfileStore) -> tuple[ToolBinding, bool, str]:
+            profile = _find_profile(store.profiles, profile_id)
             existing = next(
                 (
                     binding
@@ -275,16 +309,23 @@ class ProfileService:
                 None,
             )
             if existing is not None:
-                return existing
+                return existing, False, profile.name
             binding = ToolBinding(
                 tool_id=tool_id,
                 profile_id=profile_id,
                 bound_at=utc_now(),
             )
             store.bindings.append(binding)
-            return binding
+            return binding, True, profile.name
 
-        binding = self._repository.mutate(change)
+        binding, created, profile_name = self._repository.mutate(change)
+        if created:
+            self._record_audit(
+                action="profile_bind",
+                tool_id=tool_id,
+                profile_id=profile_id,
+                message=f"绑定供应商到工具: {profile_name} -> {tool_id}",
+            )
         return BindingView.model_validate(binding.model_dump())
 
     def unbind_tool(self, tool_id: str, profile_id: str) -> BindingDeleteResponse:
@@ -301,10 +342,39 @@ class ProfileService:
             store.bindings = remaining
             return removed
 
-        return BindingDeleteResponse(
-            tool_id=tool_id,
-            removed=self._repository.mutate(change),
-        )
+        removed = self._repository.mutate(change)
+        if removed:
+            self._record_audit(
+                action="profile_unbind",
+                tool_id=tool_id,
+                profile_id=profile_id,
+                message=f"解除供应商与工具的绑定: {tool_id}",
+            )
+        return BindingDeleteResponse(tool_id=tool_id, removed=removed)
+
+    def _record_audit(
+        self,
+        *,
+        action: AuditAction,
+        tool_id: str | None,
+        profile_id: str,
+        message: str,
+        fields: Sequence[str] = (),
+    ) -> None:
+        """审计只记可展示摘要; 写入失败只告警, 不推翻已完成的主操作。"""
+        try:
+            self._audit.record(
+                action=action,
+                tool_id=tool_id,
+                profile_id=profile_id,
+                snapshot_id=None,
+                files=[],
+                fields=fields,
+                result="success",
+                message=message,
+            )
+        except Exception:  # 审计是旁路, 不应让供应商操作失败
+            logger.warning("供应商审计写入失败", exc_info=True)
 
     def _find_or_404(self, profile_id: str) -> Profile:
         profile = self._repository.get_profile(profile_id)

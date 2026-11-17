@@ -62,3 +62,4 @@ uv run python scripts/check.py
 - `guard forbidden` 目前不拦"注释掉的断言"，这个规则仍靠人看 diff。
 
 
+

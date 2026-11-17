@@ -13,6 +13,7 @@ from app.adapters.registry import build_registry
 from app.core.config import settings
 from app.core.errors import AppError
 from app.core.paths import resolve_data_dir
+from app.repositories.audit import AuditRepository
 from app.repositories.profiles import ProfileRepository
 from app.repositories.secrets import build_secret_store
 from app.schemas.health_check import HealthCheckRequest, HealthCheckResponse
@@ -41,6 +42,7 @@ def get_profile_service() -> ProfileService:
         ProfileRepository(data_dir),
         build_secret_store(data_dir, mode=settings.secret_backend),
         ToolDiscoveryService(build_registry()),
+        AuditRepository(data_dir / "db" / "app.sqlite3"),
     )
 
 

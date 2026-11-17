@@ -2,7 +2,7 @@
 
 状态图例：`[ ]` 待做 · `[x]` 完成并已跑过 check.py · `[~]` 做了但有前提未满足
 
-- [ ] T1 后端：扩展 `AuditAction` 与供应商增删改 / 复制 / 绑定激活的审计写入，补测试；确认记录不含密钥与文件原文。
+- [x] T1 后端：扩展 `AuditAction` 与供应商增删改 / 复制 / 绑定激活的审计写入，补测试；确认记录不含密钥与文件原文。
 - [ ] T2 前端：`switch` / `snapshots` / `audit` API 模块与 store；沿用 `api/client.ts` 错误归一。
 - [ ] T3 设计：Penpot 出稿「切换预览 / 应用结果 / 冲突失败」三态，导出 2 倍快照到 `docs/design/03-hifi/`，同步 `04/05/06`，**停下来等用户确认**。
 - [ ] T4 前端：diff 预览与确认对话框；取消不发 apply。
@@ -28,5 +28,71 @@
 命令：`uv run python scripts/check.py`
 
 ```text
-待填
+# 阶段验收（T1 后端审计，2026-11-17）
+
+=== guard scope ===
+
+=== guard: scope ===
+task card: specs/104-switch-provider (5 path rules)
+[ok] 10 changed file(s), all within scope
+
+[guard] PASS
+
+=== guard forbidden ===
+
+=== guard: forbidden ===
+[ok] no banned patterns in source
+
+[guard] PASS
+
+=== backend lint ===
+All checks passed!
+
+=== backend format ===
+155 files already formatted
+
+=== backend types ===
+Success: no issues found in 92 source files
+
+=== backend tests ===
+........................................................................ [ 10%]
+........................................................................ [ 21%]
+........................................................................ [ 32%]
+........................................................................ [ 43%]
+........................................................................ [ 53%]
+........................................................................ [ 64%]
+........................................................................ [ 75%]
+........................................................................ [ 86%]
+........................................................................ [ 96%]
+.....................                                                    [100%]
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\�ҵ��ļ���\��Ŀ3\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+669 passed, 1 warning in 20.73s
+
+=== frontend types ===
+$ vue-tsc --build
+
+=== frontend lint ===
+$ run-s "lint:*"
+$ oxlint . --fix
+$ eslint . --fix --cache
+
+=== frontend tests ===
+$ vitest --run
+
+ RUN  v4.1.12 D:/我的文件夹/项目3/frontend
+
+
+ Test Files  4 passed (4)
+      Tests  36 passed (36)
+   Start at  19:32:59
+   Duration  2.06s (transform 1.08s, setup 0ms, import 1.53s, tests 578ms, environment 3.39s)
+
+
+All checks passed.
 ```
+
