@@ -14,6 +14,21 @@ const router = createRouter({
       component: () => import('../views/ProvidersView.vue'),
     },
     {
+      path: '/audit',
+      name: 'audit',
+      component: () => import('../views/AuditView.vue'),
+    },
+    {
+      path: '/usage',
+      name: 'usage',
+      component: () => import('../views/UsageView.vue'),
+    },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: () => import('../views/SettingsView.vue'),
+    },
+    {
       path: '/tools',
       redirect: { name: 'workbench' },
     },

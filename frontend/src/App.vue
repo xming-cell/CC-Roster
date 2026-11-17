@@ -1,7 +1,15 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 
 import BrandMark from './components/BrandMark.vue'
+import { useSettingsStore } from './stores/settings'
+
+const settings = useSettingsStore()
+
+onMounted(() => {
+  void settings.load()
+})
 </script>
 
 <template>
@@ -28,6 +36,26 @@ import BrandMark from './components/BrandMark.vue'
             <path d="M5 6h6M5 9h3" />
           </svg>
           <span class="app-nav__label">供应商</span>
+        </RouterLink>
+        <RouterLink class="app-nav__link" to="/audit" aria-label="操作记录">
+          <svg class="app-nav__icon app-nav__icon--outline" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <circle cx="8" cy="8" r="5.5" />
+            <path d="M8 4.8v3.5l2.3 1.5" />
+          </svg>
+          <span class="app-nav__label">操作记录</span>
+        </RouterLink>
+        <RouterLink class="app-nav__link" to="/usage" aria-label="用量">
+          <svg class="app-nav__icon app-nav__icon--outline" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M3 13V9M8 13V4M13 13V7" />
+          </svg>
+          <span class="app-nav__label">用量</span>
+        </RouterLink>
+        <RouterLink class="app-nav__link" to="/settings" aria-label="设置">
+          <svg class="app-nav__icon app-nav__icon--outline" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <circle cx="8" cy="8" r="2.2" />
+            <path d="M8 2.2v1.4M8 12.4v1.4M2.2 8h1.4M12.4 8h1.4M3.9 3.9l1 1M11.1 11.1l1 1M12.1 3.9l-1 1M4.9 11.1l-1 1" />
+          </svg>
+          <span class="app-nav__label">设置</span>
         </RouterLink>
       </nav>
     </aside>

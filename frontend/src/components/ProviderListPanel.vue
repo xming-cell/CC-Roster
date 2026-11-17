@@ -23,6 +23,7 @@ const props = defineProps<{
   healthErrors: Record<string, string>
   busyProfileId: string | null
   switchable: boolean
+  readOnly: boolean
 }>()
 
 const emit = defineEmits<{
@@ -109,7 +110,7 @@ const secretStoreTone = computed(() => {
     <div v-else-if="items.length === 0" class="provider-list__state">
       <h3>还没有绑定供应商</h3>
       <p>为 {{ tool?.display_name ?? '当前工具' }} 新增一个供应商，创建后会先以「未启用」状态绑定。</p>
-      <button class="button" type="button" @click="emit('add')">新增供应商</button>
+      <button class="button" type="button" :disabled="readOnly" :title="readOnly ? '只读模式已开启' : undefined" @click="emit('add')">新增供应商</button>
     </div>
 
     <ul v-else class="provider-list__items" aria-label="供应商列表">
@@ -121,6 +122,7 @@ const secretStoreTone = computed(() => {
           :health-error="healthErrors[item.profile.id]"
           :busy="busyProfileId === item.profile.id"
           :switchable="switchable"
+          :read-only="readOnly"
           @switch="emit('switch', $event)"
           @health="emit('health', $event)"
           @edit="emit('edit', $event)"

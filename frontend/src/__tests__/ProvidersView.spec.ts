@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import type { DOMWrapper } from '@vue/test-utils'
-import { createPinia } from 'pinia'
+import { createPinia, setActivePinia } from 'pinia'
 
 import type { BindingView, HealthCheckResponse, ProfileListResponse, ProfileView } from '../api/profiles'
 import type { ToolView } from '../api/tools'
 import ProvidersView from '../views/ProvidersView.vue'
+import { useSettingsStore } from '../stores/settings'
 import { getByRole, getByText } from './dom'
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -431,10 +432,21 @@ class FakeServer {
   }
 }
 
-function mountProviders(server: FakeServer) {
+function mountProviders(server: FakeServer, readOnly = false) {
   vi.stubGlobal('fetch', vi.fn((path: string, init?: RequestInit) => server.handle(path, init)))
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const settings = useSettingsStore()
+  settings.settings = {
+    read_only: readOnly,
+    hotkey: 'ctrl+alt+c',
+    autostart: false,
+    updated_at: NOW,
+    message: readOnly ? '只读模式已开启' : '可写模式',
+    capabilities: { tray: true, hotkey: true, autostart: true },
+  }
   return mount(ProvidersView, {
-    global: { plugins: [createPinia()] },
+    global: { plugins: [pinia] },
     attachTo: document.body,
   })
 }
@@ -738,6 +750,20 @@ describe('ProvidersView', () => {
     expect(text).toContain('档案引用的密钥不存在')
     expect(text).toContain('未发起请求')
   })
+  it('disables provider write actions in read-only mode while keeping health checks available', async () => {
+    const server = new FakeServer()
+    const wrapper = mountProviders(server, true)
+    await settle()
+    await getByRole(wrapper, 'button', { name: 'Claude Code' }).trigger('click')
+    await settle()
+
+    expect(wrapper.text()).toContain('只读模式已开启')
+    expect(getByRole(wrapper, 'button', { name: '新增供应商' }).attributes('disabled')).toBeDefined()
+    const card = cardFor(wrapper, 'Anthropic 官方')
+    expect(getByRole(card, 'button', { name: '编辑 Anthropic 官方' }).attributes('disabled')).toBeDefined()
+    expect(getByRole(card, 'button', { name: '健康检查 Anthropic 官方' }).attributes('disabled')).toBeUndefined()
+  })
+
   it('opens the switch preview from an inactive provider card', async () => {
     const writeCapable = makeTool({
       capabilities: { ...capabilities, write: true, write_mode: 'managed_fields' },

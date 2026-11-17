@@ -19,6 +19,7 @@ const props = defineProps<{
   healthError: string | undefined
   busy: boolean
   switchable: boolean
+  readOnly: boolean
 }>()
 
 const emit = defineEmits<{
@@ -127,8 +128,8 @@ const durationLabel = computed(() => {
       <button
         class="provider-card__action provider-card__action--primary"
         type="button"
-        :disabled="binding.active || busy || !switchable"
-        :title="binding.active ? '当前正在使用' : switchable ? undefined : '该工具当前不支持切换'"
+        :disabled="binding.active || busy || !switchable || readOnly"
+        :title="readOnly ? '只读模式已开启' : binding.active ? '当前正在使用' : switchable ? undefined : '该工具当前不支持切换'"
         :aria-label="'切换 ' + profile.name"
         @click="emit('switch', profile.id)"
       >
@@ -143,20 +144,21 @@ const durationLabel = computed(() => {
       >
         {{ healthLoading ? '检测中…' : '健康检查' }}
       </button>
-      <button class="provider-card__action" type="button" :disabled="busy" :aria-label="'编辑 ' + profile.name" @click="emit('edit', profile)">
+      <button class="provider-card__action" type="button" :disabled="busy || readOnly" :title="readOnly ? '只读模式已开启' : undefined" :aria-label="'编辑 ' + profile.name" @click="emit('edit', profile)">
         编辑
       </button>
-      <button class="provider-card__action" type="button" :disabled="busy" :aria-label="'复制 ' + profile.name" @click="emit('copy', profile.id)">
+      <button class="provider-card__action" type="button" :disabled="busy || readOnly" :title="readOnly ? '只读模式已开启' : undefined" :aria-label="'复制 ' + profile.name" @click="emit('copy', profile.id)">
         复制
       </button>
-      <button class="provider-card__action" type="button" :disabled="busy" :aria-label="'从工具移除 ' + profile.name" @click="emit('remove', profile.id)">
+      <button class="provider-card__action" type="button" :disabled="busy || readOnly" :title="readOnly ? '只读模式已开启' : undefined" :aria-label="'从工具移除 ' + profile.name" @click="emit('remove', profile.id)">
         从工具移除
       </button>
       <span class="provider-card__action-divider" aria-hidden="true"></span>
       <button
         class="provider-card__action provider-card__action--danger"
         type="button"
-        :disabled="busy"
+        :disabled="busy || readOnly"
+        :title="readOnly ? '只读模式已开启' : undefined"
         :aria-label="'删除 ' + profile.name"
         @click="emit('delete', profile)"
       >

@@ -9,6 +9,7 @@ export type AuditAction =
   | 'profile_delete'
   | 'profile_bind'
   | 'profile_unbind'
+  | 'profile_import'
 
 export type AuditResult = 'success' | 'failed' | 'conflict'
 

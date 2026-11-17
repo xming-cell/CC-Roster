@@ -15,6 +15,7 @@ import ProviderListPanel from '../components/ProviderListPanel.vue'
 import ProviderToolList from '../components/ProviderToolList.vue'
 import SwitchPreviewDialog from '../components/SwitchPreviewDialog.vue'
 import { useProfilesStore } from '../stores/profiles'
+import { useSettingsStore } from '../stores/settings'
 import type { ProviderItem } from '../stores/profiles'
 import type { ProfileImportResult } from '../api/profileImport'
 import { useToolsStore } from '../stores/tools'
@@ -22,6 +23,7 @@ import { errorText } from '../utils/profileDisplay'
 
 const toolsStore = useToolsStore()
 const profilesStore = useProfilesStore()
+const settingsStore = useSettingsStore()
 
 const {
   tools,
@@ -45,6 +47,7 @@ const {
   healthLoading,
   healthErrors,
 } = storeToRefs(profilesStore)
+const { readOnly } = storeToRefs(settingsStore)
 
 const selectedTool = computed(
   () => tools.value.find((tool) => tool.id === selectedToolId.value) ?? null,
@@ -97,6 +100,9 @@ function handleRetryList(): void {
 }
 
 function openCreate(): void {
+  if (readOnly.value) {
+    return
+  }
   formTrigger = rememberFocus(addButton.value)
   formMode.value = 'create'
   formProfile.value = null
@@ -168,6 +174,9 @@ async function handleRemove(profileId: string): Promise<void> {
 }
 
 function openImport(): void {
+  if (readOnly.value) {
+    return
+  }
   importTrigger = rememberFocus(addButton.value)
   importNotice.value = null
   importOpen.value = true
@@ -196,6 +205,9 @@ async function handleImported(result: ProfileImportResult): Promise<void> {
 }
 
 function openSwitch(profileId: string): void {
+  if (readOnly.value) {
+    return
+  }
   const item = items.value.find((candidate) => candidate.profile.id === profileId)
   if (item === undefined || selectedTool.value === null) {
     return
@@ -286,18 +298,24 @@ async function confirmDelete(): Promise<void> {
           </p>
         </div>
         <div class="providers__actions">
-          <button class="button button--secondary" type="button" @click="openImport">导入</button>
+          <button class="button button--secondary" type="button" :disabled="readOnly" :title="readOnly ? '只读模式已开启' : undefined" @click="openImport">导入</button>
           <button
             ref="addButton"
             class="button"
             type="button"
-            :disabled="selectedToolId === null"
+            :disabled="selectedToolId === null || readOnly"
+            :title="readOnly ? '只读模式已开启' : undefined"
             @click="openCreate"
           >
             新增供应商
           </button>
         </div>
       </header>
+
+      <div v-if="readOnly" class="providers__readonly" role="status">
+        <strong>只读模式已开启</strong>
+        <span>供应商的新增、编辑、删除、导入与切换均不可用；健康检查仍可使用。</span>
+      </div>
 
       <div v-if="importNotice" class="providers__notice providers__notice--success" role="status">
         <span>{{ importNotice }}</span>
@@ -332,6 +350,7 @@ async function confirmDelete(): Promise<void> {
         :health-errors="healthErrors"
         :busy-profile-id="busyProfileId"
         :switchable="selectedTool?.installed === true && selectedTool?.capabilities.write === true"
+        :read-only="readOnly"
         @retry="handleRetryList"
         @switch="openSwitch"
         @add="openCreate"
@@ -422,6 +441,18 @@ async function confirmDelete(): Promise<void> {
 .providers__subtitle {
   margin: 2px 0 0;
   color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.providers__readonly {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin: var(--space-md) var(--space-xl) 0;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
   font-size: var(--font-size-xs);
 }
 

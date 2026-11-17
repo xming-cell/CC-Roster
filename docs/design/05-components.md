@@ -32,6 +32,11 @@
 | 22 | `对话工作台 · 折叠态` | `ChatProcessGroup` + `ContextSwitcher` | 过程折叠、上下文内切换、失败与降级 | 6 |
 | 23 | `会话历史 · 1440` | `HistoryPanel` + `HistoryTimeline` | 只读回放、项目分组、未知类型降级 | 4 |
 | 24 | `logo / *` | `ToolLogo` | 工具品牌标（Claude / Codex / Gemini / Cursor），矢量取自 Penpot | 1 |
+| 25 | `audit-row` | `AuditEntryRow` | 操作记录行：时间、动作、工具 / 供应商、文件 / 字段、结果与快照 | 4 |
+| 26 | `对话框 / 快照详情` | `AuditSnapshotDialog` | 从审计进入的只读快照详情 | 3 |
+| 27 | `用量 / 汇总卡 · 图表 · 明细` | `UsageView` | 用量汇总、每日调用与明细，未知价格降级 | 5 |
+| 28 | `设置 / 外观 · 运行 · 隐私` | `SettingsView` | 工具级外观、运行能力、隐私与平台能力 | 6 |
+| 29 | `切换 / 开关` | `SettingsToggle` | 只读与自启开关，平台不支持时隐藏 | 3 |
 
 > 工具列表搜索框已移除（ADR-014），本文不含 `SearchField`。定位列表项靠分组与键盘，不新增搜索。
 
