@@ -16,6 +16,7 @@ AuditAction = Literal[
     "profile_delete",
     "profile_bind",
     "profile_unbind",
+    "profile_import",
 ]
 AuditResult = Literal["success", "failed", "conflict"]
 

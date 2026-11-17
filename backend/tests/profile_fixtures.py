@@ -15,7 +15,11 @@ from fastapi.testclient import TestClient
 from app.adapters.base import ToolAdapter
 from app.adapters.registry import ToolRegistry
 from app.api.audit import get_audit_service
-from app.api.profiles import get_health_check_service, get_profile_service
+from app.api.profiles import (
+    get_health_check_service,
+    get_profile_import_service,
+    get_profile_service,
+)
 from app.core.config import SecretBackendSetting
 from app.main import create_app
 from app.repositories.audit import AuditRepository
@@ -40,6 +44,7 @@ from app.services.health_check import (
     HealthCheckTransport,
     UrllibHealthCheckTransport,
 )
+from app.services.profile_import_service import ProfileImportService
 from app.services.profile_service import ProfileService
 from app.services.tool_discovery import ToolDiscoveryService
 
@@ -165,12 +170,14 @@ def make_profile_harness(
         ToolDiscoveryService(ToolRegistry(adapters)),
         audit,
     )
+    import_service = ProfileImportService(repository, secrets, audit)
     transport = health_transport or UrllibHealthCheckTransport()
     health_service = HealthCheckService(repository, secrets, transport)
     app = create_app()
     app.dependency_overrides[get_profile_service] = lambda: service
     app.dependency_overrides[get_health_check_service] = lambda: health_service
     app.dependency_overrides[get_audit_service] = lambda: AuditService(audit)
+    app.dependency_overrides[get_profile_import_service] = lambda: import_service
     return ProfileHarness(TestClient(app), repository, keyring, data_dir, transport, audit)
 
 

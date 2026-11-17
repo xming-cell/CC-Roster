@@ -28,7 +28,13 @@ from app.schemas.profile import (
     ProfileUpdate,
     ProfileView,
 )
+from app.schemas.profile_import import (
+    ProfileImportPreview,
+    ProfileImportRequest,
+    ProfileImportResult,
+)
 from app.services.health_check import HealthCheckService, UrllibHealthCheckTransport
+from app.services.profile_import_service import ProfileImportService
 from app.services.profile_service import ProfileService
 from app.services.tool_discovery import ToolDiscoveryService
 
@@ -56,6 +62,19 @@ def get_health_check_service() -> HealthCheckService:
 
 
 ProfileServiceDep = Annotated[ProfileService, Depends(get_profile_service)]
+
+
+def get_profile_import_service() -> ProfileImportService:
+    """导入按当前数据目录与环境构造, 与 CRUD 服务共享同一份存储。"""
+    data_dir = Path(resolve_data_dir())
+    return ProfileImportService(
+        ProfileRepository(data_dir),
+        build_secret_store(data_dir, mode=settings.secret_backend),
+        AuditRepository(data_dir / "db" / "app.sqlite3"),
+    )
+
+
+ProfileImportServiceDep = Annotated[ProfileImportService, Depends(get_profile_import_service)]
 HealthCheckServiceDep = Annotated[HealthCheckService, Depends(get_health_check_service)]
 
 
@@ -70,6 +89,22 @@ def list_profiles(
 @router.post("/api/profiles", response_model=ProfileView, status_code=201)
 def create_profile(payload: ProfileCreate, service: ProfileServiceDep) -> ProfileView:
     return service.create_profile(payload)
+
+
+@router.post("/api/profiles/import/preview", response_model=ProfileImportPreview)
+def preview_profile_import(
+    payload: ProfileImportRequest,
+    service: ProfileImportServiceDep,
+) -> ProfileImportPreview:
+    return service.preview(payload)
+
+
+@router.post("/api/profiles/import", response_model=ProfileImportResult, status_code=201)
+def import_profiles(
+    payload: ProfileImportRequest,
+    service: ProfileImportServiceDep,
+) -> ProfileImportResult:
+    return service.import_profiles(payload)
 
 
 @router.get("/api/profiles/{profile_id}", response_model=ProfileView)

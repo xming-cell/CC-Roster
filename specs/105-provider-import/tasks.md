@@ -2,9 +2,9 @@
 
 状态图例：`[ ]` 待做 · `[x]` 完成并已跑过 check.py · `[~]` 做了但有前提未满足
 
-- [ ] T1 定稿导入 JSON schema 示例与版本号，写进 `docs/design/05-components.md` 或卡内附录。
-- [ ] T2 后端：导入预览端点（解析 + 校验 + 分类，不写入）与测试。
-- [ ] T3 后端：导入确认端点（跳过 / 覆盖、全或无、原子写）与测试。
+- [x] T1 定稿导入 JSON schema 示例与版本号，写进 `docs/design/05-components.md` 或卡内附录。
+- [x] T2 后端：导入预览端点（解析 + 校验 + 分类，不写入）与测试。
+- [x] T3 后端：导入确认端点（跳过 / 覆盖、全或无、原子写）与测试。
 - [ ] T4 设计：Penpot 出稿「选择文件 / 预览三类结果 / 冲突与错误」，导出快照，**停下来等用户确认**。
 - [ ] T5 前端：导入对话框、文件选择、预览列表与重复项处理。
 - [ ] T6 前端：错误状态、超长内容、确认后刷新供应商列表。
@@ -25,5 +25,72 @@
 命令：`uv run python scripts/check.py`
 
 ```text
-待填
+# 阶段验收（T1-T3 后端，2026-11-17）
+
+=== guard scope ===
+
+=== guard: scope ===
+task card: specs/104-switch-provider (5 path rules)
+[ok] 6 changed file(s), all within scope
+
+[guard] PASS
+
+=== guard forbidden ===
+
+=== guard: forbidden ===
+[ok] no banned patterns in source
+
+[guard] PASS
+
+=== backend lint ===
+All checks passed!
+
+=== backend format ===
+158 files already formatted
+
+=== backend types ===
+Success: no issues found in 94 source files
+
+=== backend tests ===
+........................................................................ [ 10%]
+........................................................................ [ 21%]
+........................................................................ [ 31%]
+........................................................................ [ 42%]
+........................................................................ [ 53%]
+........................................................................ [ 63%]
+........................................................................ [ 74%]
+........................................................................ [ 85%]
+........................................................................ [ 95%]
+.............................                                            [100%]
+============================== warnings summary ===============================
+.venv\Lib\site-packages\fastapi\testclient.py:1
+  D:\�ҵ��ļ���\��Ŀ3\backend\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+677 passed, 1 warning in 23.37s
+
+=== frontend types ===
+$ vue-tsc --build
+
+=== frontend lint ===
+$ run-s "lint:*"
+$ oxlint . --fix
+$ eslint . --fix --cache
+
+=== frontend tests ===
+$ vitest --run
+
+ RUN  v4.1.12 D:/我的文件夹/项目3/frontend
+
+
+ Test Files  5 passed (5)
+      Tests  43 passed (43)
+   Start at  19:59:21
+   Duration  2.43s (transform 1.50s, setup 0ms, import 2.61s, tests 857ms, environment 4.99s)
+
+
+All checks passed.
 ```
+
+

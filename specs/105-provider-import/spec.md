@@ -47,4 +47,26 @@ docs/task-board.md
 - 不支持 CSV / YAML / 远程 URL 导入。
 - 不导入会话、用量、审计等供应商以外数据。
 - 不自动激活、不写工具配置（属于 104）。
+## 附录 A - 导入文件格式（v1）
 
+```json
+{
+  "schema_version": 1,
+  "profiles": [
+    {
+      "name": "Anthropic 官方",
+      "protocol": "anthropic",
+      "base_url": "https://api.anthropic.com",
+      "models": [{ "id": "claude-sonnet-4", "display_name": "Claude Sonnet 4" }],
+      "secret": "sk-..."
+    }
+  ]
+}
+```
+
+- `schema_version` 必填且只接受 `1`；未知版本直接拒绝。
+- `profiles` 1-500 条，整个文件不超过 1 MB。
+- 每条按 `ProfileCreate` 校验；`secret` 可省略，`protocol` 只接受 `anthropic` / `openai`。
+- 去重键为「名称（不区分大小写）+ 协议 + base_url」；文件内重复与已存在重复都会在预览中标出。
+- 导入只写供应商数据，不绑定工具、不激活、不写工具配置。
+- 文件里的 `secret` 是明文，导入后立即写入本机密钥存储，API 与审计都不回显。
