@@ -29,6 +29,7 @@ backend/src/**
 backend/tests/**
 frontend/src/**
 docs/design/**
+docs/task-board.md
 ```
 
 ## 边界用例（实现时必须想到）
@@ -46,3 +47,4 @@ docs/design/**
 - 不支持 CSV / YAML / 远程 URL 导入。
 - 不导入会话、用量、审计等供应商以外数据。
 - 不自动激活、不写工具配置（属于 104）。
+

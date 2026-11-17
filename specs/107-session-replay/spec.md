@@ -26,6 +26,7 @@
 ```scope
 frontend/src/**
 docs/design/**
+docs/task-board.md
 ```
 
 ## 边界用例（实现时必须想到）
@@ -42,3 +43,4 @@ docs/design/**
 - 不做跨工具全文搜索（ADR-014）。
 - 不改后端回放契约；发现缺口先记未决问题，不顺手扩 scope。
 - 不做 106 的实时对话与 108 的信息页。
+

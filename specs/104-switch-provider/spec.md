@@ -28,6 +28,7 @@ backend/src/**
 backend/tests/**
 frontend/src/**
 docs/design/**
+docs/task-board.md
 ```
 
 ## 边界用例（实现时必须想到）
@@ -46,3 +47,4 @@ docs/design/**
 - 不改写引擎、快照内核与脱敏语义；只做增量 action 与入口。
 - 不做搜索 / 筛选（ADR-014）。
 - 不在本卡做 105 导入、106 对话、108 三个信息页。
+

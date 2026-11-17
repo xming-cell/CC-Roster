@@ -42,7 +42,7 @@ uv run python scripts/check.py
 2. 把 `specs/CURRENT` 改成 `NNN`（不改则 `guard scope` 会跳过范围校验）；
 3. 只动 scope 内的文件，做完把 check.py 输出贴进 `tasks.md`。
 
-卡片状态：`specs/003-local-infra`、`specs/004-tool-discovery`、`specs/005a-frontend-design`、`specs/023-ci-parity`、`specs/024-replan-v2`、`specs/025-ci-test-isolation`、`specs/100-v2-decision-baseline` 均已完成；`specs/101-workbench-shell`（正式编号 027，对应 `docs/task-plan2.md` 的 101 号规划卡）T1–T7 已提交、T8 手动验收待做；`specs/102-multi-provider-bindings`（正式编号 028，对应 102 号规划卡）T1–T7 已完成并提交；`specs/103-provider-page`（正式编号 029，对应 103 号规划卡）T1–T8 已完成并提交（`551eed2`）。104–109 已建卡；024b 收口后 `specs/CURRENT` 指向 104。进度以 `docs/task-board.md` 为准。开工时按 `specs/<CURRENT>/tasks.md` 顺序推进，完成后更新 `tasks.md`、`docs/task-board.md` 与 `PROGRESS.md`。
+卡片状态：`specs/003-local-infra`、`specs/004-tool-discovery`、`specs/005a-frontend-design`、`specs/023-ci-parity`、`specs/024-replan-v2`、`specs/025-ci-test-isolation`、`specs/100-v2-decision-baseline` 均已完成；`specs/101-workbench-shell`（正式编号 027，对应 `docs/task-plan2.md` 的 101 号规划卡）T1–T7 已提交、T8 手动验收待做；`specs/102-multi-provider-bindings`（正式编号 028，对应 102 号规划卡）T1–T7 已完成并提交；`specs/103-provider-page`（正式编号 029，对应 103 号规划卡）T1–T8 已完成并提交（`551eed2`）。104–109 已建卡；`specs/CURRENT` 现指向 104。进度以 `docs/task-board.md` 为准。开工时按 `specs/<CURRENT>/tasks.md` 顺序推进，完成后更新 `tasks.md`、`docs/task-board.md` 与 `PROGRESS.md`。
 
 ## 已知坑
 
@@ -60,4 +60,5 @@ uv run python scripts/check.py
 - 前端 e2e（Playwright）尚未接入 `check.py`。
 - 后端还没有 `repositories/` 层；数据库迁移机制已在 003 就绪，但尚无业务表迁移，`rules/backend.md` 里的数据访问约定暂时无代码可对照。
 - `guard forbidden` 目前不拦"注释掉的断言"，这个规则仍靠人看 diff。
+
 

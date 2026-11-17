@@ -31,6 +31,7 @@ backend/src/**
 backend/tests/**
 frontend/src/**
 docs/design/**
+docs/task-board.md
 ```
 
 ## 边界用例（实现时必须想到）
@@ -49,3 +50,4 @@ docs/design/**
 - 不做项目 CRUD、项目备注、收藏；项目只从会话目录派生。
 - 不改已有 SSE 事件契约的语义；只做增量字段与前端消费。
 - 不在本卡做 107 历史回放与 108 信息页。
+

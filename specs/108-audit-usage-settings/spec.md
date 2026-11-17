@@ -26,6 +26,7 @@
 ```scope
 frontend/src/**
 docs/design/**
+docs/task-board.md
 ```
 
 ## 边界用例（实现时必须想到）
@@ -43,3 +44,4 @@ docs/design/**
 - 不做审计全文搜索、导出 CSV（ADR-014 搜索筛选不纳入）。
 - 不做主题编辑器与自定义配色；只做已有外观偏好的选择。
 - 不改后端 settings / audit / usage 契约；发现缺口先记未决问题。
+
