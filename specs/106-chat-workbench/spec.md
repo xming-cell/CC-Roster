@@ -50,4 +50,15 @@ docs/task-board.md
 - 不做项目 CRUD、项目备注、收藏；项目只从会话目录派生。
 - 不改已有 SSE 事件契约的语义；只做增量字段与前端消费。
 - 不在本卡做 107 历史回放与 108 信息页。
+## 附录 A - 思考强度能力表（2026-11-17 核实）
 
+| 工具 | 传参方式 | 暴露档位 | 依据 |
+|---|---|---|---|
+| Claude Code 2.1.325 | `--effort <level>` | low / medium / high / xhigh / max | 本机 `claude --help` 输出 |
+| Codex CLI 0.169.0 | `-c model_reasoning_effort=<level>` | low / medium / high | 本机 `codex` 二进制中的配置键；只取跨模型保守子集 |
+| Gemini CLI | 不支持 | — | 本机未安装，未核实到 CLI 参数；按 ADR-011 不显示 |
+| OpenCode | 不支持 | — | 本机未安装，未核实到 CLI 参数；按 ADR-011 不显示 |
+
+- 能力表落在 `ToolCapabilities.reasoning_effort` / `reasoning_effort_levels`，随 `/api/tools` 暴露。
+- 会话保存 `reasoning_effort`；创建与发送时都按当前能力表校验，非法值返回 `CHAT_REASONING_EFFORT_UNSUPPORTED`。
+- 后续核实 Gemini / OpenCode 后，只需改适配器能力表与 `build_chat_command`，不改会话契约。

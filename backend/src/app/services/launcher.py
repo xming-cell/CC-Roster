@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from app.adapters.base import ToolCapabilities
 from app.adapters.registry import ToolRegistry
 from app.core.errors import AppError
 from app.repositories.profiles import ProfileRepository
@@ -115,6 +116,10 @@ class LaunchService:
         self._which = which
         self._spawner = spawner
         self._platform = platform
+
+    def capabilities(self, tool_id: str) -> ToolCapabilities:
+        """只读能力表; 用于对话等上层在写会话前判断支持范围。"""
+        return self._registry.get(tool_id).capabilities
 
     def preview(self, request: LaunchRequest) -> LaunchPreview:
         profile = self._profile(request.profile_id)

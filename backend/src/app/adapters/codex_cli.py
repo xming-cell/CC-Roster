@@ -13,6 +13,7 @@ from pathlib import Path
 
 from app.adapters.base import (
     ToolBlocker,
+    ToolCapabilities,
     ToolCurrentFile,
     ToolDetection,
     ToolPlan,
@@ -93,6 +94,14 @@ class CodexCliAdapter(ManagedFieldsAdapter):
     id = _ID
     display_name = _DISPLAY_NAME
     supported_protocols: tuple[ProfileProtocol, ...] = ("openai",)
+    capabilities = ToolCapabilities(
+        write=True,
+        sessions=True,
+        launch=True,
+        write_mode="managed_fields",
+        reasoning_effort=True,
+        reasoning_effort_levels=["low", "medium", "high"],
+    )
 
     def __init__(self, config_dir: Path, *, which: WhichFn | None = None) -> None:
         self._config_dir = config_dir

@@ -2,9 +2,9 @@
 
 状态图例：`[ ]` 待做 · `[x]` 完成并已跑过 check.py · `[~]` 做了但有前提未满足
 
-- [ ] T1 核实 Claude Code / Codex CLI / Gemini CLI / OpenCode 的思考强度参数与取值，形成能力表并注明出处；无法确认的标「不支持」，不猜。
-- [ ] T2 后端：`ChatSession` / `ChatCreateRequest` / 命令构造增加思考强度，按能力映射；不支持时明确拒绝或忽略并写测试。
-- [ ] T3 后端：补 fake executor 下的能力 / 非法取值 / 会话恢复测试。
+- [x] T1 核实 Claude Code / Codex CLI / Gemini CLI / OpenCode 的思考强度参数与取值，形成能力表并注明出处；无法确认的标「不支持」，不猜。
+- [x] T2 后端：`ChatSession` / `ChatCreateRequest` / 命令构造增加思考强度，按能力映射；不支持时明确拒绝或忽略并写测试。
+- [x] T3 后端：补 fake executor 下的能力 / 非法取值 / 会话恢复测试。
 - [ ] T4 前端：chat / sessions API 模块、SSE 解析、store。
 - [ ] T5 设计：Penpot 出稿「对话工作台（三栏）/ 新建会话对话框 / 流式与工具调用折叠 / 失败与停止」，导出快照，**停下来等用户确认**。
 - [ ] T6 前端：会话列表、新建会话对话框、项目与模型选择。
@@ -30,3 +30,4 @@
 ```text
 待填
 ```
+

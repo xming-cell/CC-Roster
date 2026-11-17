@@ -61,6 +61,7 @@ class ChatService:
             project_dir=payload.project_dir,
             title=payload.title or "新对话",
             status="idle",
+            reasoning_effort=payload.reasoning_effort,
             messages=[],
             created_at=now,
             updated_at=now,
@@ -77,6 +78,7 @@ class ChatService:
                 tool_id=session.tool_id,
                 profile_id=session.profile_id,
                 project_dir=session.project_dir,
+                reasoning_effort=session.reasoning_effort,
             )
         )
 
@@ -89,6 +91,7 @@ class ChatService:
                 tool_id=session.tool_id,
                 profile_id=session.profile_id,
                 project_dir=session.project_dir,
+                reasoning_effort=session.reasoning_effort,
             )
         )
         env = self._launcher.environment(
@@ -109,7 +112,11 @@ class ChatService:
         yield ChatEvent(type="status", status="running", message="已发送, 等待工具响应")
 
         command = build_chat_command(
-            session.tool_id, preview.executable or "", preview.model, payload.content
+            session.tool_id,
+            preview.executable or "",
+            preview.model,
+            payload.content,
+            session.reasoning_effort,
         )
         assistant_parts: list[str] = []
         finished = False
@@ -197,6 +204,14 @@ class ChatService:
         if not preview.can_launch:
             message = "; ".join(blocker.message for blocker in preview.blockers)
             raise AppError("CHAT_CONTEXT_INVALID", message or "对话上下文不可用", 400)
+        effort = payload.reasoning_effort
+        if effort is not None:
+            levels = self._launcher.capabilities(payload.tool_id).reasoning_effort_levels
+            if effort not in levels:
+                message = (
+                    "这个工具不支持思考强度" if not levels else f"这个工具不支持思考强度: {effort}"
+                )
+                raise AppError("CHAT_REASONING_EFFORT_UNSUPPORTED", message, 422)
         return preview
 
     def _find(self, session_id: str) -> ChatSession:
@@ -277,13 +292,24 @@ def _require(store: ChatStore, session_id: str) -> ChatSession:
     raise AppError("CHAT_SESSION_NOT_FOUND", "对话不存在", 404)
 
 
-def build_chat_command(tool_id: str, executable: str, model: str | None, prompt: str) -> list[str]:
+def build_chat_command(
+    tool_id: str,
+    executable: str,
+    model: str | None,
+    prompt: str,
+    reasoning_effort: str | None = None,
+) -> list[str]:
     if tool_id == "claude-code":
-        return [executable, "-p", prompt, "--output-format", "stream-json", "--verbose"]
+        command = [executable, "-p", prompt, "--output-format", "stream-json", "--verbose"]
+        if reasoning_effort:
+            command.extend(["--effort", reasoning_effort])
+        return command
     if tool_id == "codex-cli":
         command = [executable, "exec", "--json"]
         if model:
             command.extend(["--model", model])
+        if reasoning_effort:
+            command.extend(["-c", f"model_reasoning_effort={reasoning_effort}"])
         command.append(prompt)
         return command
     raise AppError("CHAT_UNSUPPORTED", f"{tool_id} 不支持应用内对话", 400)

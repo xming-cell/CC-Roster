@@ -19,6 +19,20 @@ ChatEventType = Literal["status", "token", "tool", "done", "error", "cancelled"]
 
 MAX_MESSAGE_LENGTH = 8000
 MAX_TITLE_LENGTH = 80
+MAX_REASONING_EFFORT_LENGTH = 20
+
+
+def _normalize_reasoning_effort(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    if len(normalized) > MAX_REASONING_EFFORT_LENGTH:
+        raise ValueError(f"思考强度最长 {MAX_REASONING_EFFORT_LENGTH} 个字符")
+    if any(not (character.isalnum() or character in "-_") for character in normalized):
+        raise ValueError("思考强度包含不支持的字符")
+    return normalized
 
 
 def _require_aware(value: datetime) -> datetime:
@@ -67,6 +81,7 @@ class ChatSession(BaseModel):
     project_dir: str
     title: str
     status: ChatStatus = "idle"
+    reasoning_effort: str | None = None
     messages: list[ChatMessage] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
@@ -101,6 +116,12 @@ class ChatCreateRequest(BaseModel):
     profile_id: str
     project_dir: str
     title: str | None = None
+    reasoning_effort: str | None = None
+
+    @field_validator("reasoning_effort")
+    @classmethod
+    def _effort(cls, value: str | None) -> str | None:
+        return _normalize_reasoning_effort(value)
 
     @field_validator("tool_id", "profile_id")
     @classmethod
@@ -151,6 +172,7 @@ class ChatSessionView(BaseModel):
     project_dir: str
     title: str
     status: ChatStatus
+    reasoning_effort: str | None = None
     messages: list[ChatMessage]
     created_at: datetime
     updated_at: datetime

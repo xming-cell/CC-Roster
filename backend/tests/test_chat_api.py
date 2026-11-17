@@ -301,3 +301,93 @@ def test_cancel_without_running_process_is_idempotent(tmp_path: Path) -> None:
 
     assert first.json()["cancelled"] is False
     assert second.json()["cancelled"] is False
+
+
+def test_adapters_declare_verified_reasoning_effort_levels(tmp_path: Path) -> None:
+    from app.adapters.gemini_cli import GeminiCliAdapter
+    from app.adapters.opencode import OpenCodeAdapter
+
+    claude = ClaudeCodeAdapter(tmp_path / "claude", which=lambda _name: None)
+    codex = CodexCliAdapter(tmp_path / "codex", which=lambda _name: None)
+    gemini = GeminiCliAdapter(tmp_path / "gemini", which=lambda _name: None)
+    opencode = OpenCodeAdapter(tmp_path / "opencode", which=lambda _name: None)
+
+    assert claude.capabilities.reasoning_effort is True
+    assert claude.capabilities.reasoning_effort_levels == ["low", "medium", "high", "xhigh", "max"]
+    assert codex.capabilities.reasoning_effort is True
+    assert codex.capabilities.reasoning_effort_levels == ["low", "medium", "high"]
+    assert gemini.capabilities.reasoning_effort is False
+    assert gemini.capabilities.reasoning_effort_levels == []
+    assert opencode.capabilities.reasoning_effort is False
+
+
+def test_create_session_persists_normalized_reasoning_effort(tmp_path: Path) -> None:
+    client, _service, _fake, project, _repository = harness(tmp_path)
+
+    response = client.post(
+        "/api/chat/sessions",
+        json={
+            "tool_id": "claude-code",
+            "profile_id": PROFILE_ID,
+            "project_dir": str(project),
+            "reasoning_effort": "  High ",
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["reasoning_effort"] == "high"
+    listed = client.get("/api/chat/sessions").json()["sessions"]
+    assert listed[0]["reasoning_effort"] == "high"
+
+
+def test_create_session_rejects_unsupported_reasoning_effort(tmp_path: Path) -> None:
+    client, _service, _fake, project, _repository = harness(tmp_path)
+
+    response = client.post(
+        "/api/chat/sessions",
+        json={
+            "tool_id": "claude-code",
+            "profile_id": PROFILE_ID,
+            "project_dir": str(project),
+            "reasoning_effort": "ultra",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "CHAT_REASONING_EFFORT_UNSUPPORTED"
+
+
+def test_stream_passes_reasoning_effort_to_claude_command(tmp_path: Path) -> None:
+    client, _service, fake, project, _repository = harness(tmp_path)
+    session = client.post(
+        "/api/chat/sessions",
+        json={
+            "tool_id": "claude-code",
+            "profile_id": PROFILE_ID,
+            "project_dir": str(project),
+            "reasoning_effort": "xhigh",
+        },
+    ).json()
+
+    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"content": "读一个文件"})
+
+    command = fake.calls[0][0]
+    assert "--effort" in command
+    assert command[command.index("--effort") + 1] == "xhigh"
+
+
+def test_build_chat_command_maps_codex_reasoning_effort_to_config() -> None:
+    from app.services.chat import build_chat_command
+
+    command = build_chat_command("codex-cli", "codex", "gpt-5", "hi", "medium")
+
+    assert command == [
+        "codex",
+        "exec",
+        "--json",
+        "--model",
+        "gpt-5",
+        "-c",
+        "model_reasoning_effort=medium",
+        "hi",
+    ]
