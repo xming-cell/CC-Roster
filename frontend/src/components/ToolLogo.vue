@@ -17,22 +17,20 @@ const sizeClass = computed(() => 'tool-logo--' + (props.size ?? 'md'))
     v-if="logo"
     class="tool-logo"
     :class="sizeClass"
-    viewBox="0 0 18 18"
+    :viewBox="logo.viewBox"
     aria-hidden="true"
     focusable="false"
   >
-    <g :transform="logo.transform">
-      <path
-        v-for="(shape, index) in logo.shapes"
-        :key="index"
-        :d="shape.d"
-        :fill="shape.fill ?? 'none'"
-        :stroke="shape.stroke"
-        :stroke-width="shape.strokeWidth"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
-    </g>
+    <path
+      v-for="(shape, index) in logo.shapes"
+      :key="index"
+      :d="shape.d"
+      :fill="shape.fill ?? 'none'"
+      :stroke="shape.stroke"
+      :stroke-width="shape.strokeWidth"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
   </svg>
   <span v-else class="tool-logo tool-logo--fallback" :class="sizeClass" aria-hidden="true">
     <svg viewBox="0 0 16 16">
@@ -81,3 +79,4 @@ const sizeClass = computed(() => 'tool-logo--' + (props.size ?? 'md'))
   stroke-linejoin: round;
 }
 </style>
+
