@@ -29,6 +29,13 @@
 - 2026-11-17 029 / `specs/103-provider-page` 完成（对应 `docs/task-plan2.md` 的 103 号规划卡）：正式编号 029，依赖 101 T1–T7 与 028；只动 `frontend/src/**`。新增 `api/profiles.ts`、`stores/profiles.ts`、`ProvidersView` 与工具列表 / 供应商卡 / 表单 / 删除确认 / 模态壳等组件；`/providers` 路由与主导航「供应商」入口接通。覆盖两栏「工具 → 该工具供应商」、全量摘要与按 `tool_id` 过滤、active / 未启用、创建后绑定 `active=false`、编辑密钥留空保持 / 显式清除、复制、精确解绑、删除 409 占用工具二次确认、健康检查 loading / 结果 / 切换清除、空 / 加载 / 错误 / 密钥降级状态与 Esc 焦点回归。新增 12 个 `ProvidersView` 组件测试并更新 `App` 路由导航测试；`uv run python scripts/check.py` 全绿（663 backend passed / 36 frontend passed）。切换 / 应用 / 写工具配置仍留给 104。
 - 2026-11-17 103 已提交（`551eed2`）。同日建立 `docs/task-board.md` 作为 V2 进度与设计确认的唯一入口（卡 024b），并把 104–109 建成任务卡；前端开工前必须在 Penpot 出稿并由用户逐卡确认（用户 2026-11-17 约定）。
 
+- 2026-11-17 104 完成（提交 `5da6b37` / 设计 `80afef0`）：审计覆盖供应商增删改与绑定；前端供应商卡「切换」入口、预览 diff、应用防漂移、冲突重检、快照回滚。check：669 backend / 43 frontend。
+- 2026-11-17 105 完成（提交 `e780242` / 后端 `f1d807e` / 设计 `77cc448`）：版本化 JSON 导入、预览分类、skip/overwrite、全或无、导入审计；前端导入对话框与成功提示。check：677 backend / 48 frontend。
+- 2026-11-17 106 完成（提交 `65124f2`）：能力驱动的思考强度（Claude 5 档 / Codex 3 档 / Gemini 与 OpenCode 不显示）、`PATCH /api/chat/sessions/{id}`、加号直开、上下文内切换、过程默认折叠、失败重试、降级。check：687 backend / 57 frontend。
+- 2026-11-17 107 完成（提交 `e30e0d5`）：工具头「对话 / 历史」切换、按项目分组、五类时间线、未知类型降级、分页加载更早；历史只读。check：687 backend / 66 frontend。
+- 2026-11-17 工具 logo：从 Penpot 抽出矢量后，按用户要求改用 `src/assets/logos/` 下的官方 SVG（Simple Icons 原件），`ToolLogo` 统一渲染工具列表与对话工具头。提交 `83594cc`、`6cfc806`。
+- 2026-11-17 追加需求已登记（用户确认）：110/036 TOML 导入与 Codex 配置读取（ADR-015）、111/037 原生目录选择（ADR-016）、112/038 历史会话继续（ADR-017）；排在 108 之后、109 之前。已核对本机 `~/.codex/config.toml`：`model_providers.custom` 含 `base_url` 与明文 bearer token，导入必须按密钥处理且不得回显。
+
 ## 下一个可执行命令
 
 ```bash
@@ -42,7 +49,7 @@ uv run python scripts/check.py
 2. 把 `specs/CURRENT` 改成 `NNN`（不改则 `guard scope` 会跳过范围校验）；
 3. 只动 scope 内的文件，做完把 check.py 输出贴进 `tasks.md`。
 
-卡片状态：`specs/003-local-infra`、`specs/004-tool-discovery`、`specs/005a-frontend-design`、`specs/023-ci-parity`、`specs/024-replan-v2`、`specs/025-ci-test-isolation`、`specs/100-v2-decision-baseline` 均已完成；`specs/101-workbench-shell`（正式编号 027，对应 `docs/task-plan2.md` 的 101 号规划卡）T1–T7 已提交、T8 手动验收待做；`specs/102-multi-provider-bindings`（正式编号 028，对应 102 号规划卡）T1–T7 已完成并提交；`specs/103-provider-page`（正式编号 029，对应 103 号规划卡）T1–T8 已完成并提交（`551eed2`）。104–109 已建卡；`specs/CURRENT` 现指向 104。进度以 `docs/task-board.md` 为准。开工时按 `specs/<CURRENT>/tasks.md` 顺序推进，完成后更新 `tasks.md`、`docs/task-board.md` 与 `PROGRESS.md`。
+卡片状态：104–107 已完成并提交；`specs/CURRENT` 现指向 107。下一步 108（操作记录 / 用量 / 设置），随后 110–112（TOML 导入 / 原生目录 / 历史续聊），最后 109（验收发布）。进度以 `docs/task-board.md` 为准。
 
 ## 已知坑
 

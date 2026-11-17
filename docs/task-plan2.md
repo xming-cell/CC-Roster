@@ -431,3 +431,15 @@
 7. 开 109，做验收与发布基线。
 
 > 每张卡开工前复制 `specs/_template/`，填 DoD 与 `scope`，把 `specs/CURRENT` 指向新卡；`check.py` 不绿不算完成。
+
+## 9. 追加需求（2026-11-17 用户确认）
+
+以下需求晚于原计划，已建正式任务卡，排在 108 之后、109 之前：
+
+| 规划卡 | 正式编号 | 目录 | 需求 | 对应 ADR |
+|---|---|---|---|---|
+| 110 | 036 | `specs/110-toml-import` | 导入支持 TOML，并可直接读取 `~/.codex/config.toml`；密钥只进密钥库 | ADR-015 |
+| 111 | 037 | `specs/111-directory-picker` | 新建会话时用系统原生文件夹选择器 | ADR-016 |
+| 112 | 038 | `specs/112-resume-history` | 历史会话可显式「继续」，Claude `--resume` / Codex `exec resume` | ADR-017 |
+
+说明：本应用内部 `profiles.json` 保持 JSON，不随导入格式改为 TOML。

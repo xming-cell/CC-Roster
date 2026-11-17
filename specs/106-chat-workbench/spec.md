@@ -85,3 +85,4 @@ docs/task-board.md
 **后端增量**
 - `ChatSession` / `ChatSessionView` 增加 `model`（可空）；新增 `PATCH /api/chat/sessions/{id}` 更新 `model` / `reasoning_effort`，按供应商模型清单与工具能力表校验。
 - 旧会话缺字段时按默认值读取；不改 SSE 事件契约。
+> 后续修订（2026-11-17）：项目目录改为系统原生选择器，见 037 / `specs/111-directory-picker`；当前文本框作为降级保留。
