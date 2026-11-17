@@ -30,7 +30,8 @@
 | 20 | `对话框 / 导入预览` | `ImportPreviewList` + `ImportSummary` | 新增 / 重复 / 非法分类与重复策略 | 3 |
 | 21 | `对话框 / 导入错误` | `ImportErrorPanel` | 坏 JSON / 未知版本 / 超限 | 2 |
 | 22 | `对话工作台 · 折叠态` | `ChatProcessGroup` + `ContextSwitcher` | 过程折叠、上下文内切换、失败与降级 | 6 |
-| 23 | 会话历史 · 1440 | HistoryPanel + HistoryTimeline | 只读回放、项目分组、未知类型降级 | 4 |
+| 23 | `会话历史 · 1440` | `HistoryPanel` + `HistoryTimeline` | 只读回放、项目分组、未知类型降级 | 4 |
+| 24 | `logo / *` | `ToolLogo` | 工具品牌标（Claude / Codex / Gemini / Cursor），矢量取自 Penpot | 1 |
 
 > 工具列表搜索框已移除（ADR-014），本文不含 `SearchField`。定位列表项靠分组与键盘，不新增搜索。
 
@@ -209,6 +210,7 @@
 - 工具条目保留「未配置 / 异常」条目并可见 → 对应 `01-ia.md` §4.1。
 - 对话区始终显示工具名、项目目录、模型与思考强度 → 对应 §4.2，落在 `工具头` + `上下文条`。
 - 供应商与工具分开管理 → 当前首页只展示「当前供应商摘要」，不提供第二个编辑入口 → 对应 §4.4。
+
 
 
 

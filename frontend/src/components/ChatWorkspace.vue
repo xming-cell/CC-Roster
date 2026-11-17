@@ -12,6 +12,7 @@ import ChatComposer from './ChatComposer.vue'
 import ChatTranscript from './ChatTranscript.vue'
 import ContextSwitcher from './ContextSwitcher.vue'
 import ProjectDirPrompt from './ProjectDirPrompt.vue'
+import ToolLogo from './ToolLogo.vue'
 import ToolStatusBadge from './ToolStatusBadge.vue'
 
 const props = defineProps<{ tool: ToolView }>()
@@ -180,6 +181,7 @@ async function handleStop(): Promise<void> {
   <section class="chat" aria-labelledby="chat-title">
     <header class="chat__header">
       <div class="chat__heading">
+        <ToolLogo :tool-id="tool.id" size="md" />
         <h1 id="chat-title" class="chat__title">{{ tool.display_name }}</h1>
         <ToolStatusBadge :status="tool.status" />
         <span v-if="current !== null" class="chat__session-title">{{ sessionTitle }}</span>
@@ -399,4 +401,5 @@ async function handleStop(): Promise<void> {
   color: var(--color-danger-fg);
 }
 </style>
+
 

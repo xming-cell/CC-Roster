@@ -8,6 +8,7 @@ import {
   modelLabel,
   providerLabel,
 } from '../utils/toolDisplay'
+import ToolLogo from './ToolLogo.vue'
 import ToolStatusBadge from './ToolStatusBadge.vue'
 
 const props = defineProps<{
@@ -34,9 +35,7 @@ const model = computed(() => modelLabel(props.tool))
       @click="emit('select', tool.id)"
     >
       <span class="tool-item__icon" aria-hidden="true">
-        <svg viewBox="0 0 16 16" focusable="false">
-          <path d="M4.2 5.3 6.7 8l-2.5 2.7M8.2 10.8h3.6" />
-        </svg>
+        <ToolLogo :tool-id="tool.id" size="sm" />
       </span>
 
       <span class="tool-item__content">
@@ -99,15 +98,7 @@ const model = computed(() => modelLabel(props.tool))
   color: var(--color-primary);
 }
 
-.tool-item__icon svg {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
+
 
 .tool-item__content {
   display: flex;
@@ -140,3 +131,4 @@ const model = computed(() => modelLabel(props.tool))
   overflow-wrap: anywhere;
 }
 </style>
+
