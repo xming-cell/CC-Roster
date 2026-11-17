@@ -4,6 +4,7 @@
 > 输入：`docs/design/01-ia.md`（工作区版本）、`docs/requirements.md`、`docs/decisions.md`、现有后端实现与测试
 > 性质：**规划稿，不是任务卡**。正式开工仍按 `AGENTS.md` 创建 `specs/NNN-<短名>/`，填好 DoD 与 `scope`，把 `specs/CURRENT` 指向新卡；`uv run python scripts/check.py` 退出码 0 是唯一完成信号。
 > 编号说明：本文的 100+ 是规划稿临时编号；正式开卡时按 `specs/` 现有顺序取号，标题与依赖关系不变。
+> 进度与设计确认：以 `docs/task-board.md` 为准；本文件只保留规划与理由。
 
 ## 0. 为什么重排
 
