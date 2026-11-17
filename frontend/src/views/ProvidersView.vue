@@ -8,6 +8,7 @@ import type {
   ProfileUpdateInput,
   ProfileView,
 } from '../api/profiles'
+import ImportProvidersDialog from '../components/ImportProvidersDialog.vue'
 import ProviderDeleteDialog from '../components/ProviderDeleteDialog.vue'
 import ProviderFormDialog from '../components/ProviderFormDialog.vue'
 import ProviderListPanel from '../components/ProviderListPanel.vue'
@@ -15,6 +16,7 @@ import ProviderToolList from '../components/ProviderToolList.vue'
 import SwitchPreviewDialog from '../components/SwitchPreviewDialog.vue'
 import { useProfilesStore } from '../stores/profiles'
 import type { ProviderItem } from '../stores/profiles'
+import type { ProfileImportResult } from '../api/profileImport'
 import { useToolsStore } from '../stores/tools'
 import { errorText } from '../utils/profileDisplay'
 
@@ -57,6 +59,10 @@ const formMode = ref<'create' | 'edit'>('create')
 const formProfile = ref<ProfileView | null>(null)
 const formBusy = ref(false)
 const formError = ref<string | null>(null)
+
+const importOpen = ref(false)
+const importNotice = ref<string | null>(null)
+let importTrigger: HTMLElement | null = null
 
 const switchTarget = ref<ProviderItem | null>(null)
 let switchTrigger: HTMLElement | null = null
@@ -161,6 +167,34 @@ async function handleRemove(profileId: string): Promise<void> {
   }
 }
 
+function openImport(): void {
+  importTrigger = rememberFocus(addButton.value)
+  importNotice.value = null
+  importOpen.value = true
+}
+
+async function closeImport(): Promise<void> {
+  importOpen.value = false
+  await nextTick()
+  importTrigger?.focus()
+}
+
+async function handleImported(result: ProfileImportResult): Promise<void> {
+  importOpen.value = false
+  const parts: string[] = []
+  if (result.imported > 0) {
+    parts.push('新增 ' + result.imported + ' 条')
+  }
+  if (result.overwritten > 0) {
+    parts.push('覆盖 ' + result.overwritten + ' 条')
+  }
+  if (result.skipped > 0) {
+    parts.push('跳过 ' + result.skipped + ' 条')
+  }
+  importNotice.value = parts.length === 0 ? '没有需要导入的供应商。' : '导入完成：' + parts.join('，') + '。'
+  await refreshPage()
+}
+
 function openSwitch(profileId: string): void {
   const item = items.value.find((candidate) => candidate.profile.id === profileId)
   if (item === undefined || selectedTool.value === null) {
@@ -251,16 +285,26 @@ async function confirmDelete(): Promise<void> {
             {{ selectedToolId ? '为 ' + selectedToolName + ' 管理接口、模型与密钥' : '按工具管理供应商与绑定关系' }}
           </p>
         </div>
-        <button
-          ref="addButton"
-          class="button"
-          type="button"
-          :disabled="selectedToolId === null"
-          @click="openCreate"
-        >
-          新增供应商
-        </button>
+        <div class="providers__actions">
+          <button class="button button--secondary" type="button" @click="openImport">导入</button>
+          <button
+            ref="addButton"
+            class="button"
+            type="button"
+            :disabled="selectedToolId === null"
+            @click="openCreate"
+          >
+            新增供应商
+          </button>
+        </div>
       </header>
+
+      <div v-if="importNotice" class="providers__notice providers__notice--success" role="status">
+        <span>{{ importNotice }}</span>
+        <button class="providers__notice-close" type="button" aria-label="关闭提示" @click="importNotice = null">
+          关闭
+        </button>
+      </div>
 
       <div v-if="pageError" class="providers__notice" role="alert">
         <span>{{ pageError }}</span>
@@ -308,6 +352,12 @@ async function confirmDelete(): Promise<void> {
       :error="formError"
       @submit="handleFormSubmit"
       @close="closeForm"
+    />
+
+    <ImportProvidersDialog
+      v-if="importOpen"
+      @close="closeImport"
+      @imported="handleImported"
     />
 
     <SwitchPreviewDialog
@@ -389,6 +439,17 @@ async function confirmDelete(): Promise<void> {
   overflow-wrap: anywhere;
 }
 
+.providers__notice--success {
+  background: var(--color-success-bg);
+  color: var(--color-success-fg);
+}
+
+.providers__actions {
+  display: flex;
+  flex: none;
+  gap: var(--space-sm);
+}
+
 .providers__notice-close {
   flex: none;
   padding: 2px 6px;
@@ -436,4 +497,5 @@ async function confirmDelete(): Promise<void> {
   }
 }
 </style>
+
 
