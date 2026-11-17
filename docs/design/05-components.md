@@ -26,7 +26,7 @@
 | 16 | `diff 卡片` | `DiffTable` | 按文件分组的字段级 before/after | 3 |
 | 17 | `错误面板` | `BlockerPanel` | 阻止应用的冲突 / 权限 / 只读说明 | 2 |
 | 18 | `对话框 / 切换结果` | `SwitchResultDialog` | 应用结果 + 快照 / 回滚入口 | 2 |
-| 19 | `对话框 / 导入选择` | `ImportDialog` | 选择 / 拖放 JSON 文件 | 2 |
+| 19 | `对话框 / 导入选择` | `ImportDialog` | 选择 / 拖放 JSON / TOML，或读取 Codex 配置 | 4 |
 | 20 | `对话框 / 导入预览` | `ImportPreviewList` + `ImportSummary` | 新增 / 重复 / 非法分类与重复策略 | 3 |
 | 21 | `对话框 / 导入错误` | `ImportErrorPanel` | 坏 JSON / 未知版本 / 超限 | 2 |
 | 22 | `对话工作台 · 折叠态` | `ChatProcessGroup` + `ContextSwitcher` | 过程折叠、上下文内切换、失败与降级 | 6 |

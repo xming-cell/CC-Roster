@@ -29,6 +29,7 @@ from app.schemas.profile import (
     ProfileView,
 )
 from app.schemas.profile_import import (
+    CodexProfileImportRequest,
     ProfileImportPreview,
     ProfileImportRequest,
     ProfileImportResult,
@@ -97,6 +98,21 @@ def preview_profile_import(
     service: ProfileImportServiceDep,
 ) -> ProfileImportPreview:
     return service.preview(payload)
+
+
+@router.post("/api/profiles/import/codex/preview", response_model=ProfileImportPreview)
+def preview_codex_profile_import(
+    service: ProfileImportServiceDep,
+) -> ProfileImportPreview:
+    return service.preview_codex()
+
+
+@router.post("/api/profiles/import/codex", response_model=ProfileImportResult, status_code=201)
+def import_codex_profiles(
+    payload: CodexProfileImportRequest,
+    service: ProfileImportServiceDep,
+) -> ProfileImportResult:
+    return service.import_codex(payload.policy)
 
 
 @router.post("/api/profiles/import", response_model=ProfileImportResult, status_code=201)

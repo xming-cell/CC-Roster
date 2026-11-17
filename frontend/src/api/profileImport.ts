@@ -8,6 +8,8 @@ export interface ProfileImportItem {
   name: string | null
   status: ImportItemStatus
   reasons: string[]
+  notes: string[]
+  has_secret: boolean
   conflict_profile_id: string | null
 }
 
@@ -22,6 +24,9 @@ export interface ProfileImportPreview {
   items: ProfileImportItem[]
   totals: ProfileImportTotals
   can_import: boolean
+  source: 'content' | 'codex_config'
+  source_path: string | null
+  format: 'json' | 'toml'
 }
 
 export interface ProfileImportResult {
@@ -54,6 +59,22 @@ export function importProfiles(
   return requestJson<ProfileImportResult>(
     '/api/profiles/import',
     jsonInit({ content, policy }),
+    { timeoutMs: 30_000 },
+  )
+}
+
+export function previewCodexConfigImport(): Promise<ProfileImportPreview> {
+  return requestJson<ProfileImportPreview>(
+    '/api/profiles/import/codex/preview',
+    { method: 'POST' },
+    { timeoutMs: 20_000 },
+  )
+}
+
+export function importCodexProfiles(policy: ImportPolicy): Promise<ProfileImportResult> {
+  return requestJson<ProfileImportResult>(
+    '/api/profiles/import/codex',
+    jsonInit({ policy }),
     { timeoutMs: 30_000 },
   )
 }

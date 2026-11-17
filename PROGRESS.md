@@ -4,18 +4,18 @@
 
 > 新对话先读：`AGENTS.md` → `rules/*.md` → 本文件 → `docs/task-board.md` → `specs/CURRENT` 指向的卡片。
 
-- **当前指针**：`specs/CURRENT = 108`。104–108 已全部完成并提交，**不要重做**。
-- **下一步**：110（TOML 导入 + 直接读取 Codex 配置）。108 三张设计已确认，前端、组件测试与本地页面实测完成。
+- **当前指针**：`specs/CURRENT = 110`。104–110 已全部完成并提交，**不要重做**。
+- **下一步**：111（原生项目目录选择）。110 的 TOML / Codex 配置导入已完成。
 - **之后顺序**：110（TOML 导入 + 读 Codex 配置）→ 111（原生目录选择）→ 112（历史续聊）→ 109（验收发布）。
 - **用户工作流（硬约束）**：前端一律先 Penpot 出稿、贴图、等用户确认后才写代码；后端可以直接做。每卡一提交，`check.py` 退出码 0 是唯一完成信号。
-- **最近提交**：108 本卡提交（见 `git log -1`）、`0a6adb0`（指向 108）、`57b7029`（追加需求 110–112 与 ADR-015～017）、`6cfc806`（官方 SVG logo）、`e30e0d5`（107）、`65124f2`（106）。
-- **测试基线**：687 backend / 76 frontend。
+- **最近提交**：110 本卡提交（见 `git log -1`）、808aac0（108）、`0a6adb0`（指向 108）、`57b7029`（追加需求 110–112 与 ADR-015～017）。
+- **测试基线**：696 backend / 78 frontend。
 - **关键决策**：
   - 思考强度能力表：Claude 5 档（low/medium/high/xhigh/max，`--effort`），Codex 3 档（`-c model_reasoning_effort=`），Gemini / OpenCode 不显示（本机未安装、未核实）。
   - 新建会话：工具头「+」直接开，项目目录沿用该工具最近会话，首次才询问一次；模型 / 强度在上下文条内切换，只影响本会话。
   - 历史：默认只读；「继续」见 112，Claude `--resume`、Codex `exec resume`（均已核实）。
   - 导入：JSON 与 TOML 并存；`~/.codex/config.toml` 里 `model_providers.custom` 含明文 bearer token，导入必须进密钥库且不回显。
-- **设计快照**：108 的 `13-audit-1440.png`、`14-usage-1440.png`、`15-settings-1440.png` 已从 Penpot 导出（当前为 1×，最终 2× 可在 109 前补）；103–107 的 PNG 仍缺。
+- **设计快照**：108 的 `13`–`15`、110 的 `16`–`17` 已从 Penpot 导出（当前为 1×，最终 2× 可在 109 前补）；103–107 的 PNG 仍缺。
 - **环境坑**：Penpot 标签页会休眠，报错时请用户点一下；`cdn.jsdelivr.net` 不通但 `unpkg.com` 可用；长文本写文件优先用 Node REPL 的 fs，PowerShell 双引号里反引号会被当转义。
 - **Penpot**：文件「新建文件 1」→ 页面「主页面」；画板按行排列（工作台/供应商/切换/导入/对话/历史）。新增画板沿用 1440 宽、640 对话框、现有 26 个令牌。
 
@@ -53,6 +53,7 @@
 - 2026-11-17 106 完成（提交 `65124f2`）：能力驱动的思考强度（Claude 5 档 / Codex 3 档 / Gemini 与 OpenCode 不显示）、`PATCH /api/chat/sessions/{id}`、加号直开、上下文内切换、过程默认折叠、失败重试、降级。check：687 backend / 57 frontend。
 - 2026-11-17 107 完成（提交 `e30e0d5`）：工具头「对话 / 历史」切换、按项目分组、五类时间线、未知类型降级、分页加载更早；历史只读。check：687 backend / 66 frontend。
 - 2026-11-17 108 完成（本卡提交）：操作记录（工具筛选、快照详情）、用量（范围、汇总、图表、明细、未知价格）、设置（工具级外观、只读、快捷键、自启、隐私与平台能力）；只读模式联动供应商写入口。check：687 backend / 76 frontend。
+- 2026-11-17 110 完成（本卡提交）：导入支持 JSON / TOML；新增从 `CODEX_HOME` / `~/.codex/config.toml` 直接预览与导入，provider / 默认模型 / wire_api / token / env_key 边界齐全；前端导入对话框支持双来源与密钥状态。check：696 backend / 78 frontend。
 - 2026-11-17 工具 logo：从 Penpot 抽出矢量后，按用户要求改用 `src/assets/logos/` 下的官方 SVG（Simple Icons 原件），`ToolLogo` 统一渲染工具列表与对话工具头。提交 `83594cc`、`6cfc806`。
 - 2026-11-17 追加需求已登记（用户确认）：110/036 TOML 导入与 Codex 配置读取（ADR-015）、111/037 原生目录选择（ADR-016）、112/038 历史会话继续（ADR-017）；排在 108 之后、109 之前。已核对本机 `~/.codex/config.toml`：`model_providers.custom` 含 `base_url` 与明文 bearer token，导入必须按密钥处理且不得回显。
 
@@ -69,7 +70,7 @@ uv run python scripts/check.py
 2. 把 `specs/CURRENT` 改成 `NNN`（不改则 `guard scope` 会跳过范围校验）；
 3. 只动 scope 内的文件，做完把 check.py 输出贴进 `tasks.md`。
 
-卡片状态：104–108 已完成并提交；`specs/CURRENT` 现指向 108。下一步 110（TOML 导入 / 读 Codex 配置），随后 111、112，最后 109（验收发布）。进度以 `docs/task-board.md` 为准。
+卡片状态：104–110 已完成并提交；`specs/CURRENT` 现指向 110。下一步 111（原生目录），随后 112，最后 109（验收发布）。进度以 `docs/task-board.md` 为准。
 
 ## 已知坑
 
