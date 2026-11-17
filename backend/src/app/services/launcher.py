@@ -121,6 +121,10 @@ class LaunchService:
         """只读能力表; 用于对话等上层在写会话前判断支持范围。"""
         return self._registry.get(tool_id).capabilities
 
+    def profile(self, profile_id: str) -> Profile:
+        """只读供应商; 供对话校验模型清单。"""
+        return self._profile(profile_id)
+
     def preview(self, request: LaunchRequest) -> LaunchPreview:
         profile = self._profile(request.profile_id)
         spec = _SPECS.get(request.tool_id)

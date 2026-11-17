@@ -18,6 +18,7 @@ from app.schemas.chat import (
     ChatSendRequest,
     ChatSessionListResponse,
     ChatSessionView,
+    ChatUpdateRequest,
 )
 from app.services.chat import ChatService
 from app.services.chat_executor import SubprocessChatExecutor
@@ -50,6 +51,15 @@ def create_chat_session(payload: ChatCreateRequest, service: ChatServiceDep) -> 
 @router.get("/api/chat/sessions/{session_id}", response_model=ChatSessionView)
 def get_chat_session(session_id: str, service: ChatServiceDep) -> ChatSessionView:
     return service.get_session(session_id)
+
+
+@router.patch("/api/chat/sessions/{session_id}", response_model=ChatSessionView)
+def update_chat_session(
+    session_id: str,
+    payload: ChatUpdateRequest,
+    service: ChatServiceDep,
+) -> ChatSessionView:
+    return service.update_session(session_id, payload)
 
 
 @router.post("/api/chat/sessions/{session_id}/messages")

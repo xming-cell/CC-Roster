@@ -81,6 +81,7 @@ class ChatSession(BaseModel):
     project_dir: str
     title: str
     status: ChatStatus = "idle"
+    model: str | None = None
     reasoning_effort: str | None = None
     messages: list[ChatMessage] = Field(default_factory=list)
     created_at: datetime
@@ -147,6 +148,34 @@ class ChatCreateRequest(BaseModel):
         return normalized or None
 
 
+class ChatUpdateRequest(BaseModel):
+    """只更新本会话的模型 / 思考强度; 不修改全局绑定与工具配置。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str | None = None
+    reasoning_effort: str | None = None
+
+    @field_validator("model")
+    @classmethod
+    def _model(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            return None
+        if len(normalized) > 120:
+            raise ValueError("模型标识最长 120 个字符")
+        if any(not (character.isalnum() or character in "._:/-") for character in normalized):
+            raise ValueError("模型标识包含不支持的字符")
+        return normalized
+
+    @field_validator("reasoning_effort")
+    @classmethod
+    def _effort(cls, value: str | None) -> str | None:
+        return _normalize_reasoning_effort(value)
+
+
 class ChatSendRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -172,6 +201,7 @@ class ChatSessionView(BaseModel):
     project_dir: str
     title: str
     status: ChatStatus
+    model: str | None = None
     reasoning_effort: str | None = None
     messages: list[ChatMessage]
     created_at: datetime

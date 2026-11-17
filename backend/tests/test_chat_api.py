@@ -16,6 +16,7 @@ from app.repositories.chat import ChatRepository
 from app.repositories.profiles import ProfileRepository
 from app.repositories.secrets import build_secret_store
 from app.schemas.chat import ChatStore
+from app.schemas.profile import ModelEntry
 from app.services.chat import ChatService
 from app.services.chat_executor import RawChatEvent, parse_json_event, parse_output_line
 from app.services.launcher import LaunchService
@@ -176,6 +177,8 @@ def test_stream_maps_tokens_tools_and_done(tmp_path: Path) -> None:
         "--output-format",
         "stream-json",
         "--verbose",
+        "--model",
+        "claude-sonnet-4",
     ]
     assert cwd == project
     assert env["ANTHROPIC_MODEL"] == "claude-sonnet-4"
@@ -391,3 +394,93 @@ def test_build_chat_command_maps_codex_reasoning_effort_to_config() -> None:
         "model_reasoning_effort=medium",
         "hi",
     ]
+
+
+def test_patch_session_updates_model_and_reasoning_effort(tmp_path: Path) -> None:
+    client, _service, _fake, project, _repository = harness(tmp_path)
+    session = create_session(client, project)
+
+    profiles = ProfileRepository(tmp_path / "data")
+
+    def add_model(store) -> None:
+        profile = store.profiles[0]
+        profile.models.append(ModelEntry(id="claude-opus-4"))
+
+    profiles.mutate(add_model)
+
+    response = client.patch(
+        f"/api/chat/sessions/{session['id']}",
+        json={"model": "claude-opus-4", "reasoning_effort": "high"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["model"] == "claude-opus-4"
+    assert body["reasoning_effort"] == "high"
+
+
+def test_patch_session_rejects_model_outside_profile(tmp_path: Path) -> None:
+    client, _service, _fake, project, _repository = harness(tmp_path)
+    session = create_session(client, project)
+
+    response = client.patch(
+        f"/api/chat/sessions/{session['id']}",
+        json={"model": "gpt-5"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "CHAT_MODEL_UNKNOWN"
+
+
+def test_patch_session_rejects_unsupported_reasoning_effort(tmp_path: Path) -> None:
+    client, _service, _fake, project, _repository = harness(tmp_path)
+    session = create_session(client, project)
+
+    response = client.patch(
+        f"/api/chat/sessions/{session['id']}",
+        json={"reasoning_effort": "ultra"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "CHAT_REASONING_EFFORT_UNSUPPORTED"
+
+
+def test_patch_session_rejects_while_running(tmp_path: Path) -> None:
+    client, _service, _fake, project, repository = harness(tmp_path)
+    session = create_session(client, project)
+
+    def set_running(store) -> None:
+        store.sessions[0].status = "running"
+
+    repository.mutate(set_running)
+
+    response = client.patch(
+        f"/api/chat/sessions/{session['id']}",
+        json={"reasoning_effort": "high"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "CHAT_BUSY"
+
+
+def test_stream_uses_session_model_override(tmp_path: Path) -> None:
+    client, _service, fake, project, _repository = harness(tmp_path)
+
+    profiles = ProfileRepository(tmp_path / "data")
+
+    def add_model(store) -> None:
+        profile = store.profiles[0]
+        profile.models.append(ModelEntry(id="claude-opus-4"))
+
+    profiles.mutate(add_model)
+    session = create_session(client, project)
+    client.patch(
+        f"/api/chat/sessions/{session['id']}",
+        json={"model": "claude-opus-4"},
+    )
+
+    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"content": "读一个文件"})
+
+    command = fake.calls[0][0]
+    assert "--model" in command
+    assert command[command.index("--model") + 1] == "claude-opus-4"

@@ -71,7 +71,12 @@ const brokenTool = makeTool({
 type FetchHandler = (path: string) => Promise<Response>
 
 function stubFetch(handler: FetchHandler) {
-  const mock = vi.fn<FetchHandler>(handler)
+  const mock = vi.fn<FetchHandler>((path: string) => {
+    if (path === '/api/chat/sessions') {
+      return Promise.resolve(jsonResponse({ sessions: [] }))
+    }
+    return handler(path)
+  })
   vi.stubGlobal('fetch', mock)
   return mock
 }
@@ -471,3 +476,4 @@ describe('WorkbenchView', () => {
     )
   })
 })
+

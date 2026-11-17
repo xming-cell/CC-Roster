@@ -21,6 +21,7 @@ from app.schemas.chat import (
     ChatSessionView,
     ChatStatus,
     ChatStore,
+    ChatUpdateRequest,
 )
 from app.schemas.launcher import LaunchPreview, LaunchRequest
 from app.services.chat_executor import ChatExecutor
@@ -114,7 +115,7 @@ class ChatService:
         command = build_chat_command(
             session.tool_id,
             preview.executable or "",
-            preview.model,
+            session.model or preview.model,
             payload.content,
             session.reasoning_effort,
         )
@@ -179,6 +180,40 @@ class ChatService:
         finally:
             if not finished:
                 self._finish(session_id, assistant_parts, "failed", "连接中断")
+
+    def update_session(self, session_id: str, payload: ChatUpdateRequest) -> ChatSessionView:
+        session = self._find(session_id)
+        if session.status == "running":
+            raise AppError("CHAT_BUSY", "这个对话正在执行, 请先停止或等待完成", 409)
+        updates: dict[str, object] = {}
+        if "model" in payload.model_fields_set:
+            if payload.model is not None:
+                profile = self._launcher.profile(session.profile_id)
+                if not any(item.id == payload.model for item in profile.models):
+                    raise AppError(
+                        "CHAT_MODEL_UNKNOWN",
+                        f"模型不在供应商清单中: {payload.model}",
+                        422,
+                    )
+            updates["model"] = payload.model
+        if "reasoning_effort" in payload.model_fields_set:
+            levels = self._launcher.capabilities(session.tool_id).reasoning_effort_levels
+            if payload.reasoning_effort is not None and payload.reasoning_effort not in levels:
+                raise AppError(
+                    "CHAT_REASONING_EFFORT_UNSUPPORTED",
+                    f"这个工具不支持思考强度: {payload.reasoning_effort}",
+                    422,
+                )
+            updates["reasoning_effort"] = payload.reasoning_effort
+        if updates:
+
+            def change(item: ChatSession) -> None:
+                for key, value in updates.items():
+                    setattr(item, key, value)
+                item.updated_at = utc_now()
+
+            self._update(session_id, change)
+        return _view(self._find(session_id))
 
     def cancel(self, session_id: str) -> ChatCancelResponse:
         session = self._find(session_id)
@@ -301,6 +336,8 @@ def build_chat_command(
 ) -> list[str]:
     if tool_id == "claude-code":
         command = [executable, "-p", prompt, "--output-format", "stream-json", "--verbose"]
+        if model:
+            command.extend(["--model", model])
         if reasoning_effort:
             command.extend(["--effort", reasoning_effort])
         return command
