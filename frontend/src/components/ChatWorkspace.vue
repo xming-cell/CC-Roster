@@ -6,9 +6,12 @@ import { listProfiles } from '../api/profiles'
 import type { ProfileListResponse, ProfileView } from '../api/profiles'
 import type { ToolView } from '../api/tools'
 import { useChatStore } from '../stores/chat'
+import { useHistoryStore } from '../stores/history'
 import { errorText } from '../utils/profileDisplay'
 import { projectName } from '../utils/chatDisplay'
 import ChatComposer from './ChatComposer.vue'
+import HistoryPanel from './HistoryPanel.vue'
+import HistoryTimeline from './HistoryTimeline.vue'
 import ChatTranscript from './ChatTranscript.vue'
 import ContextSwitcher from './ContextSwitcher.vue'
 import ProjectDirPrompt from './ProjectDirPrompt.vue'
@@ -28,6 +31,27 @@ const {
   streaming,
   streamError,
 } = storeToRefs(chat)
+
+const history = useHistoryStore()
+const {
+  sessions: historySessions,
+  loading: historyLoading,
+  loaded: historyLoaded,
+  error: historyError,
+  warnings: historyWarnings,
+  currentId: historyCurrentId,
+  messages: historyMessages,
+  detailLoading: historyDetailLoading,
+  detailError: historyDetailError,
+  detailWarnings: historyDetailWarnings,
+  messagesHasMore: historyHasMore,
+  totalMessages: historyTotal,
+} = storeToRefs(history)
+
+const mode = ref<'chat' | 'history'>('chat')
+const historyTitle = computed(
+  () => historySessions.value.find((item) => item.id === historyCurrentId.value)?.title ?? null,
+)
 
 const profilesData = ref<ProfileListResponse | null>(null)
 const profilesError = ref<string | null>(null)
@@ -107,11 +131,33 @@ watch(
   () => props.tool.id,
   () => {
     chat.clearCurrent()
+    history.reset()
+    mode.value = 'chat'
     profilesData.value = null
     actionError.value = null
     void initialize()
   },
 )
+
+async function openHistory(): Promise<void> {
+  mode.value = 'history'
+  await history.fetchSessions(props.tool.id)
+  if (historySessions.value.length > 0 && historyCurrentId.value === null) {
+    await history.openSession(historySessions.value[0]?.id ?? '')
+  }
+}
+
+function handleHistorySelect(sessionId: string): void {
+  void history.openSession(sessionId)
+}
+
+function handleLoadEarlier(): void {
+  void history.loadEarlier()
+}
+
+function handleHistoryRetry(): void {
+  void openHistory()
+}
 
 async function createSession(projectDir: string): Promise<void> {
   const profile = activeProfile.value
@@ -187,8 +233,27 @@ async function handleStop(): Promise<void> {
         <span v-if="current !== null" class="chat__session-title">{{ sessionTitle }}</span>
       </div>
       <div class="chat__actions">
+        <div class="chat__modes" role="group" aria-label="工作台视图">
+          <button
+            class="chat__mode"
+            :class="{ 'chat__mode--active': mode === 'chat' }"
+            type="button"
+            @click="mode = 'chat'"
+          >
+            对话
+          </button>
+          <button
+            class="chat__mode"
+            :class="{ 'chat__mode--active': mode === 'history' }"
+            type="button"
+            @click="openHistory"
+          >
+            历史
+          </button>
+        </div>
         <button class="chat__link" type="button" @click="emit('show-detail')">详情</button>
         <button
+          v-if="mode === 'chat'"
           class="icon-button"
           type="button"
           aria-label="新建会话"
@@ -200,7 +265,7 @@ async function handleStop(): Promise<void> {
       </div>
     </header>
 
-    <div v-if="current !== null && canChat" class="chat__context">
+    <div v-if="mode === 'chat' && current !== null && canChat" class="chat__context">
       <span class="chat__project" :title="current.project_dir">{{ projectLabel }}</span>
       <ContextSwitcher
         :model="current.model"
@@ -218,7 +283,31 @@ async function handleStop(): Promise<void> {
     <div v-if="profilesError !== null" class="chat__banner" role="alert">{{ profilesError }}</div>
     <div v-if="actionError !== null" class="chat__banner" role="alert">{{ actionError }}</div>
 
-    <div v-if="!canChat" class="chat__fallback">
+    <div v-if="mode === 'history'" class="chat__history">
+      <HistoryPanel
+        :sessions="historySessions"
+        :selected-id="historyCurrentId"
+        :loading="historyLoading"
+        :loaded="historyLoaded"
+        :error="historyError"
+        :warnings="historyWarnings"
+        @select="handleHistorySelect"
+        @retry="handleHistoryRetry"
+      />
+      <HistoryTimeline
+        :title="historyTitle"
+        :session-id="historyCurrentId"
+        :messages="historyMessages"
+        :loading="historyDetailLoading"
+        :error="historyDetailError"
+        :warnings="historyDetailWarnings"
+        :has-more="historyHasMore"
+        :total-messages="historyTotal"
+        @load-earlier="handleLoadEarlier"
+      />
+    </div>
+
+    <div v-else-if="!canChat" class="chat__fallback">
       <h2>这个工具不支持应用内对话</h2>
       <p>可以查看工具配置，或切换到支持对话的工具；这里不会显示一个输入后无效的输入框。</p>
       <button class="button button--secondary" type="button" @click="emit('show-detail')">
@@ -312,6 +401,36 @@ async function handleStop(): Promise<void> {
   gap: var(--space-sm);
 }
 
+.chat__modes {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-subtle);
+}
+
+.chat__mode {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.chat__mode--active {
+  background: var(--color-surface);
+  color: var(--color-primary-hover);
+  font-weight: 600;
+}
+
+.chat__history {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 280px minmax(0, 1fr);
+  min-height: 0;
+}
+
 .chat__link {
   padding: 4px 6px;
   border: 0;
@@ -401,5 +520,6 @@ async function handleStop(): Promise<void> {
   color: var(--color-danger-fg);
 }
 </style>
+
 
 

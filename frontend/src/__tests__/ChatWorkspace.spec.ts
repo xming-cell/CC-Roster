@@ -6,7 +6,7 @@ import type { ChatSessionView } from '../api/chat'
 import type { ProfileListResponse } from '../api/profiles'
 import type { ToolView } from '../api/tools'
 import ChatWorkspace from '../components/ChatWorkspace.vue'
-import { getByText } from './dom'
+import { getByRole, getByText } from './dom'
 
 const NOW = '2026-11-17T10:00:00+00:00'
 
@@ -127,6 +127,59 @@ function makeServer(options: { sessions?: ChatSessionView[]; tool?: ToolView } =
       if (url.startsWith('/api/profiles')) {
         return Promise.resolve(jsonResponse(profileList))
       }
+      if (url.startsWith('/api/sessions?')) {
+        return Promise.resolve(
+          jsonResponse({
+            sessions: [
+              {
+                id: 'history-1',
+                tool_id: 'claude-code',
+                title: '修复构建失败',
+                project_path: 'D:/projects/demo',
+                started_at: NOW,
+                updated_at: NOW,
+                message_count: 2,
+                warnings: [],
+              },
+            ],
+            warnings: [],
+            next_cursor: null,
+            has_more: false,
+          }),
+        )
+      }
+      if (url.startsWith('/api/sessions/claude-code/history-1')) {
+        return Promise.resolve(
+          jsonResponse({
+            tool_id: 'claude-code',
+            session_id: 'history-1',
+            messages: [
+              {
+                id: 'h1',
+                role: 'user',
+                timestamp: NOW,
+                content: '帮我修复构建',
+                tool_name: null,
+                is_error: false,
+                raw_type: null,
+              },
+              {
+                id: 'h2',
+                role: 'assistant',
+                timestamp: NOW,
+                content: '已修复依赖冲突',
+                tool_name: null,
+                is_error: false,
+                raw_type: null,
+              },
+            ],
+            next_cursor: null,
+            has_more: false,
+            total_messages: 2,
+            warnings: [],
+          }),
+        )
+      }
       return Promise.reject(new Error('unexpected request: ' + url))
     }),
   )
@@ -200,6 +253,20 @@ describe('ChatWorkspace', () => {
 
     const patch = calls.find((call) => call.method === 'PATCH')
     expect(patch?.body.model).toBe('claude-opus-4')
+  })
+
+  it('switches to read-only history and opens the newest session', async () => {
+    makeServer({ sessions: [session] })
+    const wrapper = mountWorkspace()
+    await flushPromises()
+
+    await getByRole(wrapper, 'button', { name: '历史' }).trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('修复构建失败')
+    expect(wrapper.text()).toContain('只读 · 共 2 条')
+    expect(wrapper.text()).toContain('已修复依赖冲突')
+    expect(wrapper.find('textarea').exists()).toBe(false)
   })
 
   it('hides the effort chip when the tool does not declare that capability', async () => {
