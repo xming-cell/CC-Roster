@@ -18,6 +18,7 @@ from app.api.sessions import router as sessions_router
 from app.api.settings import router as settings_router
 from app.api.snapshots import router as snapshots_router
 from app.api.switch import router as switch_router
+from app.api.system import router as system_router
 from app.api.tools import router as tools_router
 from app.api.usage import router as usage_router
 from app.core.config import settings
@@ -73,6 +74,7 @@ def create_app() -> FastAPI:
     app.include_router(onboarding_router)
     app.include_router(snapshots_router)
     app.include_router(switch_router)
+    app.include_router(system_router)
     app.include_router(audit_router)
     return app
 
