@@ -22,10 +22,12 @@ const props = defineProps<{
   healthLoading: Record<string, boolean>
   healthErrors: Record<string, string>
   busyProfileId: string | null
+  switchable: boolean
 }>()
 
 const emit = defineEmits<{
   retry: []
+  switch: [profileId: string]
   add: []
   health: [profileId: string]
   edit: [profile: ProviderItem['profile']]
@@ -118,6 +120,8 @@ const secretStoreTone = computed(() => {
           :health-loading="healthLoading[item.profile.id] === true"
           :health-error="healthErrors[item.profile.id]"
           :busy="busyProfileId === item.profile.id"
+          :switchable="switchable"
+          @switch="emit('switch', $event)"
           @health="emit('health', $event)"
           @edit="emit('edit', $event)"
           @copy="emit('copy', $event)"
@@ -292,3 +296,4 @@ const secretStoreTone = computed(() => {
   }
 }
 </style>
+

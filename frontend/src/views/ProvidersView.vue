@@ -12,7 +12,9 @@ import ProviderDeleteDialog from '../components/ProviderDeleteDialog.vue'
 import ProviderFormDialog from '../components/ProviderFormDialog.vue'
 import ProviderListPanel from '../components/ProviderListPanel.vue'
 import ProviderToolList from '../components/ProviderToolList.vue'
+import SwitchPreviewDialog from '../components/SwitchPreviewDialog.vue'
 import { useProfilesStore } from '../stores/profiles'
+import type { ProviderItem } from '../stores/profiles'
 import { useToolsStore } from '../stores/tools'
 import { errorText } from '../utils/profileDisplay'
 
@@ -55,6 +57,9 @@ const formMode = ref<'create' | 'edit'>('create')
 const formProfile = ref<ProfileView | null>(null)
 const formBusy = ref(false)
 const formError = ref<string | null>(null)
+
+const switchTarget = ref<ProviderItem | null>(null)
+let switchTrigger: HTMLElement | null = null
 
 const deleteTarget = ref<ProfileView | null>(null)
 const deleteStage = ref<'confirm' | 'in-use'>('confirm')
@@ -154,6 +159,25 @@ async function handleRemove(profileId: string): Promise<void> {
   } finally {
     busyProfileId.value = null
   }
+}
+
+function openSwitch(profileId: string): void {
+  const item = items.value.find((candidate) => candidate.profile.id === profileId)
+  if (item === undefined || selectedTool.value === null) {
+    return
+  }
+  switchTrigger = rememberFocus(addButton.value)
+  switchTarget.value = item
+}
+
+async function closeSwitch(): Promise<void> {
+  switchTarget.value = null
+  await nextTick()
+  switchTrigger?.focus()
+}
+
+async function handleSwitchChanged(): Promise<void> {
+  await refreshPage()
 }
 
 function handleHealth(profileId: string): void {
@@ -263,7 +287,9 @@ async function confirmDelete(): Promise<void> {
         :health-loading="healthLoading"
         :health-errors="healthErrors"
         :busy-profile-id="busyProfileId"
+        :switchable="selectedTool?.installed === true && selectedTool?.capabilities.write === true"
         @retry="handleRetryList"
+        @switch="openSwitch"
         @add="openCreate"
         @health="handleHealth"
         @edit="openEdit"
@@ -282,6 +308,14 @@ async function confirmDelete(): Promise<void> {
       :error="formError"
       @submit="handleFormSubmit"
       @close="closeForm"
+    />
+
+    <SwitchPreviewDialog
+      v-if="switchTarget !== null && selectedTool !== null"
+      :tool="selectedTool"
+      :profile="switchTarget.profile"
+      @close="closeSwitch"
+      @changed="handleSwitchChanged"
     />
 
     <ProviderDeleteDialog
@@ -402,3 +436,4 @@ async function confirmDelete(): Promise<void> {
   }
 }
 </style>
+

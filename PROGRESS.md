@@ -57,9 +57,10 @@ uv run python scripts/check.py
 ## 未决问题
 
 - D-9～D-17 已定稿（ADR-009～014），不再阻塞后续实现卡；101 号规划卡已落为正式卡 027（目录 `specs/101-workbench-shell`），T1–T7 已提交（`0e9fb43`），T8 手动验收仍待做。028 卡（目录 `specs/102-multi-provider-bindings`，对应 102 号规划卡）T1–T7 已完成并提交，`tasks.md` 与手动验收表已回填；103 卡（目录 `specs/103-provider-page`，正式编号 029）T1–T8 已完成并回填。103 的关键边界：只做供应商页与绑定关系，不做切换 / 应用 / 写工具配置（104）；下一步可开 104 卡。
-- 前端 e2e（Playwright）尚未接入 `check.py`。
+- 前端 e2e（Playwright）尚未接入 `check.py`。`docs/design/03-hifi/` 还缺 103 与 104 的 PNG 快照：Penpot 插件沙箱不允许把导出字节写回本地，当前会话的浏览器控制也被 URL 校验拦住；需在下一次能控制 Penpot 标签页时补导，或由用户手动导出 `04-providers-1440.png`、`05-switch-preview-1440.png`、`06-switch-result-1440.png`、`07-switch-conflict-1440.png`。
 - 后端还没有 `repositories/` 层；数据库迁移机制已在 003 就绪，但尚无业务表迁移，`rules/backend.md` 里的数据访问约定暂时无代码可对照。
 - `guard forbidden` 目前不拦"注释掉的断言"，这个规则仍靠人看 diff。
+
 
 
 

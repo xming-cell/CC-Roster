@@ -18,9 +18,11 @@ const props = defineProps<{
   healthLoading: boolean
   healthError: string | undefined
   busy: boolean
+  switchable: boolean
 }>()
 
 const emit = defineEmits<{
+  switch: [profileId: string]
   health: [profileId: string]
   edit: [profile: ProfileView]
   copy: [profileId: string]
@@ -124,6 +126,16 @@ const durationLabel = computed(() => {
     <footer class="provider-card__actions">
       <button
         class="provider-card__action provider-card__action--primary"
+        type="button"
+        :disabled="binding.active || busy || !switchable"
+        :title="binding.active ? '当前正在使用' : switchable ? undefined : '该工具当前不支持切换'"
+        :aria-label="'切换 ' + profile.name"
+        @click="emit('switch', profile.id)"
+      >
+        {{ binding.active ? '使用中' : '切换' }}
+      </button>
+      <button
+        class="provider-card__action"
         type="button"
         :disabled="healthLoading || busy"
         :aria-label="'健康检查 ' + profile.name"
@@ -417,3 +429,4 @@ const durationLabel = computed(() => {
   }
 }
 </style>
+

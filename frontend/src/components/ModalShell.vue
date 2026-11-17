@@ -4,6 +4,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 const props = defineProps<{
   labelledBy: string
   role?: 'dialog' | 'alertdialog'
+  size?: 'default' | 'wide'
 }>()
 
 const emit = defineEmits<{
@@ -75,6 +76,7 @@ onBeforeUnmount(() => {
     <div
       ref="dialog"
       class="modal"
+      :class="{ 'modal--wide': props.size === 'wide' }"
       :role="props.role ?? 'dialog'"
       aria-modal="true"
       :aria-labelledby="props.labelledBy"
@@ -107,6 +109,10 @@ onBeforeUnmount(() => {
   box-shadow: var(--shadow-card);
 }
 
+.modal--wide {
+  width: min(640px, 100%);
+}
+
 @media (max-width: 720px) {
   .modal-backdrop {
     align-items: flex-end;
@@ -118,3 +124,5 @@ onBeforeUnmount(() => {
   }
 }
 </style>
+
+

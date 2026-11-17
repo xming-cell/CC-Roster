@@ -257,6 +257,37 @@ class FakeServer {
       return jsonResponse({ tools: this.tools, warnings: [] })
     }
 
+    if (url.pathname === '/api/switch/preview' && method === 'POST') {
+      const file = '/home/me/.claude/settings.json'
+      return jsonResponse({
+        tool_id: 'claude-code',
+        profile_id: body.profile_id,
+        model: 'claude-sonnet-4-5',
+        available_models: [],
+        files: [
+          {
+            path: file,
+            format: 'json',
+            action: 'updated',
+            before_sha256: null,
+            after_sha256: 'b'.repeat(64),
+            before_size: 0,
+            after_size: 10,
+            changes: [
+              { path: file, field: 'model', action: 'set', before: 'claude-opus-4', after: 'claude-sonnet-4' },
+            ],
+          },
+        ],
+        blockers: [],
+        warnings: [],
+        restart_required: false,
+        restart_message: '',
+        observations: [],
+        preview_digest: 'c'.repeat(64),
+        can_apply: true,
+      })
+    }
+
     if (url.pathname === '/api/profiles' && method === 'GET') {
       const toolId = url.searchParams.get('tool_id')
       if (toolId !== null && this.listErrorTool === toolId) {
@@ -707,4 +738,24 @@ describe('ProvidersView', () => {
     expect(text).toContain('档案引用的密钥不存在')
     expect(text).toContain('未发起请求')
   })
+  it('opens the switch preview from an inactive provider card', async () => {
+    const writeCapable = makeTool({
+      capabilities: { ...capabilities, write: true, write_mode: 'managed_fields' },
+    })
+    const server = new FakeServer({
+      tools: [writeCapable, codexTool, brokenTool],
+    })
+    const wrapper = mountProviders(server)
+    await settle()
+    await getByRole(wrapper, 'button', { name: 'Claude Code' }).trigger('click')
+    await settle()
+
+    await getByRole(wrapper, 'button', { name: '切换 Kimi K2' }).trigger('click')
+    await settle()
+
+    expect(server.calls.some((call) => call.path === '/api/switch/preview')).toBe(true)
+    expect(wrapper.text()).toContain('切换供应商')
+    expect(wrapper.text()).toContain('字段变更')
+  })
 })
+
