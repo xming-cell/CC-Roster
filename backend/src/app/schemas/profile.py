@@ -174,7 +174,7 @@ class Profile(BaseModel):
 
 
 class ToolBinding(BaseModel):
-    """工具到档案的绑定; 006 只记录选择, `active` 恒为 false。"""
+    """工具到档案的绑定; 同一工具可保存多条, 最多一条 `active=True`。"""
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
@@ -221,9 +221,13 @@ class ProfileStore(BaseModel):
         if len(profile_ids) != len(set(profile_ids)):
             raise ValueError("档案 id 重复")
 
-        tool_ids = [binding.tool_id for binding in self.bindings]
-        if len(tool_ids) != len(set(tool_ids)):
-            raise ValueError("同一工具出现多条绑定")
+        pairs = [(binding.tool_id, binding.profile_id) for binding in self.bindings]
+        if len(pairs) != len(set(pairs)):
+            raise ValueError("同一工具重复绑定同一档案")
+
+        active_tools = [binding.tool_id for binding in self.bindings if binding.active]
+        if len(active_tools) != len(set(active_tools)):
+            raise ValueError("同一工具出现多条 active 绑定")
 
         known_profiles = set(profile_ids)
         if any(binding.profile_id not in known_profiles for binding in self.bindings):

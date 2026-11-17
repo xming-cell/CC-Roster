@@ -127,7 +127,7 @@ def test_apply_writes_fields_snapshot_audit_and_binding(tmp_path: Path) -> None:
     for field in entries[0].fields:
         assert SECRET not in field
 
-    binding = harness.profiles.get_binding("claude-code")
+    binding = harness.profiles.get_binding("claude-code", profile.id)
     assert binding is not None
     assert binding.active is True
     assert binding.snapshot_id == body["snapshot_id"]
@@ -171,7 +171,7 @@ def test_apply_codex_writes_both_files(tmp_path: Path) -> None:
     rendered_auth = json.loads(auth.read_text(encoding="utf-8"))
     assert rendered_auth["OPENAI_API_KEY"] == SECRET
     assert rendered_auth["tokens"] == {"id_token": "oauth-token"}
-    binding = harness.profiles.get_binding("codex-cli")
+    binding = harness.profiles.get_binding("codex-cli", profile.id)
     assert binding is not None and binding.active is True
 
 
@@ -340,7 +340,7 @@ def test_apply_binding_failure_rolls_back_files(
     assert response.status_code == 500
     assert response.json()["code"] == "BINDING_WRITE_FAILED"
     assert settings.read_bytes() == original
-    assert harness.profiles.get_binding("claude-code") is None
+    assert harness.profiles.get_binding("claude-code", profile.id) is None
     entries = harness.audit.list_recent()
     assert entries[0].result == "failed"
     assert entries[0].snapshot_id is not None
@@ -403,7 +403,7 @@ def test_profile_edit_during_write_rolls_back_and_is_stale(
     assert response.status_code == 409
     assert response.json()["code"] == "SWITCH_PREVIEW_STALE"
     assert settings.read_bytes() == original
-    assert harness.profiles.get_binding("claude-code") is None
+    assert harness.profiles.get_binding("claude-code", profile.id) is None
 
 
 def test_audit_failure_restores_files(
@@ -463,7 +463,7 @@ def test_concurrent_apply_has_exactly_one_success(tmp_path: Path) -> None:
     failed = next(response for response in responses if response.status_code == 409)
     assert failed.json()["code"] == "WRITE_CONFLICT"
     assert json.loads(settings.read_bytes())["env"]["ANTHROPIC_API_KEY"] == SECRET
-    binding = harness.profiles.get_binding("claude-code")
+    binding = harness.profiles.get_binding("claude-code", profile.id)
     assert binding is not None and binding.active is True
 
 

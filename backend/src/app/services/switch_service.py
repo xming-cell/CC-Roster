@@ -517,22 +517,46 @@ class SwitchService:
             )
             if current is None or current.updated_at != prepared.profile.updated_at:
                 raise _ProfileStale()
-            existing = next(
-                (binding for binding in store.bindings if binding.tool_id == prepared.tool_id),
-                None,
-            )
-            binding = ToolBinding(
-                tool_id=prepared.tool_id,
-                profile_id=prepared.profile.id,
-                bound_at=existing.bound_at if existing is not None else applied_at,
-                active=True,
-                applied_at=applied_at,
-                snapshot_id=snapshot_id,
-            )
-            store.bindings = [
-                stored for stored in store.bindings if stored.tool_id != prepared.tool_id
-            ]
-            store.bindings.append(binding)
+            updated: list[ToolBinding] = []
+            target: ToolBinding | None = None
+            for stored in store.bindings:
+                if stored.tool_id != prepared.tool_id:
+                    updated.append(stored)
+                elif stored.profile_id == prepared.profile.id:
+                    target = stored
+                    updated.append(stored)
+                elif stored.active:
+                    updated.append(stored.model_copy(update={"active": False}))
+                else:
+                    updated.append(stored)
+
+            if target is None:
+                binding = ToolBinding(
+                    tool_id=prepared.tool_id,
+                    profile_id=prepared.profile.id,
+                    bound_at=applied_at,
+                    active=True,
+                    applied_at=applied_at,
+                    snapshot_id=snapshot_id,
+                )
+                updated.append(binding)
+            else:
+                binding = target.model_copy(
+                    update={
+                        "active": True,
+                        "applied_at": applied_at,
+                        "snapshot_id": snapshot_id,
+                    }
+                )
+                target_index = next(
+                    index
+                    for index, stored in enumerate(updated)
+                    if stored.tool_id == prepared.tool_id
+                    and stored.profile_id == prepared.profile.id
+                )
+                updated[target_index] = binding
+
+            store.bindings = updated
             return BindingView.model_validate(binding.model_dump())
 
         return self._profiles.mutate(change)

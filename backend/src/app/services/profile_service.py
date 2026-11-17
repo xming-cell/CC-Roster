@@ -49,17 +49,26 @@ class ProfileService:
         self._secrets = secrets
         self._tools = tools
 
-    def list_profiles(self) -> ProfileListResponse:
+    def list_profiles(self, tool_id: str | None = None) -> ProfileListResponse:
         store = self._repository.load()
         discovered = self._installed_tools()
         status = self._secrets.status()
+        bindings = (
+            store.bindings
+            if tool_id is None
+            else [binding for binding in store.bindings if binding.tool_id == tool_id]
+        )
+        bound_profile_ids = {binding.profile_id for binding in bindings}
+        profiles = (
+            store.profiles
+            if tool_id is None
+            else [profile for profile in store.profiles if profile.id in bound_profile_ids]
+        )
         return ProfileListResponse(
             profiles=[
-                self._build_view(profile, store.bindings, discovered) for profile in store.profiles
+                self._build_view(profile, store.bindings, discovered) for profile in profiles
             ],
-            bindings=[
-                BindingView.model_validate(binding.model_dump()) for binding in store.bindings
-            ],
+            bindings=[BindingView.model_validate(binding.model_dump()) for binding in bindings],
             secret_store=status,
             warnings=_store_warnings(status),
         )
@@ -252,34 +261,42 @@ class ProfileService:
         )
 
     def bind_tool(self, tool_id: str, profile_id: str) -> BindingView:
-        """把已安装工具指向档案; 同一档案重复绑定保持 `bound_at` 不变。"""
+        """把已安装工具绑到档案; 只新增绑定, 不删除同工具的其他供应商。"""
         self._tools.get_tool(tool_id)
 
         def change(store: ProfileStore) -> ToolBinding:
             _find_profile(store.profiles, profile_id)
             existing = next(
-                (binding for binding in store.bindings if binding.tool_id == tool_id),
+                (
+                    binding
+                    for binding in store.bindings
+                    if binding.tool_id == tool_id and binding.profile_id == profile_id
+                ),
                 None,
             )
-            if existing is not None and existing.profile_id == profile_id:
+            if existing is not None:
                 return existing
             binding = ToolBinding(
                 tool_id=tool_id,
                 profile_id=profile_id,
                 bound_at=utc_now(),
             )
-            store.bindings = [stored for stored in store.bindings if stored.tool_id != tool_id]
             store.bindings.append(binding)
             return binding
 
         binding = self._repository.mutate(change)
         return BindingView.model_validate(binding.model_dump())
 
-    def unbind_tool(self, tool_id: str) -> BindingDeleteResponse:
-        """解除工具绑定; 不要求工具仍安装, 重复解绑返回 `removed=false`。"""
+    def unbind_tool(self, tool_id: str, profile_id: str) -> BindingDeleteResponse:
+        """精确解除指定绑定; 不要求工具仍安装, 重复解绑返回 `removed=false`。"""
 
         def change(store: ProfileStore) -> bool:
-            remaining = [binding for binding in store.bindings if binding.tool_id != tool_id]
+            _find_profile(store.profiles, profile_id)
+            remaining = [
+                binding
+                for binding in store.bindings
+                if not (binding.tool_id == tool_id and binding.profile_id == profile_id)
+            ]
             removed = len(remaining) != len(store.bindings)
             store.bindings = remaining
             return removed

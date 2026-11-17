@@ -7,10 +7,11 @@
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.adapters.registry import build_registry
 from app.core.config import settings
+from app.core.errors import AppError
 from app.core.paths import resolve_data_dir
 from app.repositories.profiles import ProfileRepository
 from app.repositories.secrets import build_secret_store
@@ -57,8 +58,11 @@ HealthCheckServiceDep = Annotated[HealthCheckService, Depends(get_health_check_s
 
 
 @router.get("/api/profiles", response_model=ProfileListResponse)
-def list_profiles(service: ProfileServiceDep) -> ProfileListResponse:
-    return service.list_profiles()
+def list_profiles(
+    service: ProfileServiceDep,
+    tool_id: Annotated[str | None, Query()] = None,
+) -> ProfileListResponse:
+    return service.list_profiles(tool_id=_normalize_optional_id(tool_id, "tool_id"))
 
 
 @router.post("/api/profiles", response_model=ProfileView, status_code=201)
@@ -111,8 +115,22 @@ def bind_tool_profile(
 def unbind_tool_profile(
     tool_id: str,
     service: ProfileServiceDep,
+    profile_id: Annotated[str, Query()],
 ) -> BindingDeleteResponse:
-    return service.unbind_tool(tool_id)
+    """兼容入口; 必须指定 `profile_id`, 不会清空该工具的全部绑定。"""
+    return service.unbind_tool(tool_id, _normalize_required_id(profile_id, "profile_id"))
+
+
+@router.delete(
+    "/api/tools/{tool_id}/profiles/{profile_id}",
+    response_model=BindingDeleteResponse,
+)
+def unbind_tool_profile_by_id(
+    tool_id: str,
+    profile_id: str,
+    service: ProfileServiceDep,
+) -> BindingDeleteResponse:
+    return service.unbind_tool(tool_id, _normalize_required_id(profile_id, "profile_id"))
 
 
 @router.post(
@@ -125,3 +143,16 @@ def health_check_profile(
     payload: HealthCheckRequest | None = None,
 ) -> HealthCheckResponse:
     return service.check(profile_id, payload or HealthCheckRequest())
+
+
+def _normalize_required_id(value: str, field: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise AppError("VALIDATION_ERROR", f"{field} 不能为空", 422)
+    return normalized
+
+
+def _normalize_optional_id(value: str | None, field: str) -> str | None:
+    if value is None:
+        return None
+    return _normalize_required_id(value, field)

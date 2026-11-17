@@ -92,7 +92,7 @@ def test_same_profile_can_bind_two_tools(tmp_path: Path) -> None:
     ]
 
 
-def test_rebinding_tool_to_another_profile_replaces_old_binding(tmp_path: Path) -> None:
+def test_binding_second_profile_keeps_first_binding(tmp_path: Path) -> None:
     claude_dir = tmp_path / "claude"
     seed_claude(claude_dir)
     harness = make_profile_harness(tmp_path, claude_adapter(claude_dir))
@@ -110,13 +110,17 @@ def test_rebinding_tool_to_another_profile_replaces_old_binding(tmp_path: Path) 
 
     assert first.status_code == 200
     assert second.status_code == 200
-    assert assert_aware_iso(second.json()["bound_at"]) >= assert_aware_iso(first.json()["bound_at"])
+    assert first.json()["active"] is False
+    assert second.json()["active"] is False
     assert second.json()["profile_id"] == beta["id"]
-    assert harness.repository.list_bindings()[0].profile_id == beta["id"]
-    assert harness.client.get(f"/api/profiles/{alpha['id']}").json()["used_by"] == []
-    assert harness.client.get(f"/api/profiles/{beta['id']}").json()["used_by"] == [
-        {"tool_id": "claude-code", "display_name": "Claude Code", "installed": True}
+    assert [binding.profile_id for binding in harness.repository.list_bindings()] == [
+        alpha["id"],
+        beta["id"],
     ]
+    for profile in (alpha, beta):
+        assert harness.client.get(f"/api/profiles/{profile['id']}").json()["used_by"] == [
+            {"tool_id": "claude-code", "display_name": "Claude Code", "installed": True}
+        ]
 
 
 def test_binding_same_profile_again_is_idempotent_and_keeps_bound_at(tmp_path: Path) -> None:
@@ -154,8 +158,8 @@ def test_unbind_removes_binding_and_repeated_unbind_is_idempotent(tmp_path: Path
         json={"profile_id": profile["id"]},
     )
 
-    removed = harness.client.delete("/api/tools/claude-code/profile")
-    repeated = harness.client.delete("/api/tools/claude-code/profile")
+    removed = harness.client.delete(f"/api/tools/claude-code/profiles/{profile['id']}")
+    repeated = harness.client.delete(f"/api/tools/claude-code/profiles/{profile['id']}")
 
     assert removed.status_code == 200
     assert removed.json() == {"tool_id": "claude-code", "removed": True}
@@ -170,7 +174,7 @@ def test_unbind_does_not_require_tool_to_still_be_installed(tmp_path: Path) -> N
     profile = create_profile(harness)
     bind_profile(harness, str(profile["id"]), "removed-tool")
 
-    removed = harness.client.delete("/api/tools/removed-tool/profile")
+    removed = harness.client.delete(f"/api/tools/removed-tool/profiles/{profile['id']}")
 
     assert removed.status_code == 200
     assert removed.json() == {"tool_id": "removed-tool", "removed": True}
@@ -288,7 +292,10 @@ def test_bind_and_unbind_do_not_touch_tool_config_files(tmp_path: Path) -> None:
             == 200
         )
     for tool_id in ("claude-code", "codex-cli"):
-        assert harness.client.delete(f"/api/tools/{tool_id}/profile").status_code == 200
+        assert (
+            harness.client.delete(f"/api/tools/{tool_id}/profiles/{profile['id']}").status_code
+            == 200
+        )
 
     assert (snapshot_tree(claude_dir), snapshot_tree(codex_dir)) == tools_before
     assert harness.repository.list_bindings() == []
