@@ -1,5 +1,24 @@
 # 进度
 
+## 交接快照（2026-11-17，对话切换用）
+
+> 新对话先读：`AGENTS.md` → `rules/*.md` → 本文件 → `docs/task-board.md` → `specs/CURRENT` 指向的卡片。
+
+- **当前指针**：`specs/CURRENT = 108`。104–107 已全部完成并提交，**不要重做**。
+- **下一步**：108（操作记录 / 用量 / 设置）先出 Penpot 三张画板 → 用户确认 → 写前端。
+- **之后顺序**：110（TOML 导入 + 读 Codex 配置）→ 111（原生目录选择）→ 112（历史续聊）→ 109（验收发布）。
+- **用户工作流（硬约束）**：前端一律先 Penpot 出稿、贴图、等用户确认后才写代码；后端可以直接做。每卡一提交，`check.py` 退出码 0 是唯一完成信号。
+- **最近提交**：`0a6adb0`（指向 108）、`57b7029`（追加需求 110–112 与 ADR-015～017）、`6cfc806`（官方 SVG logo）、`e30e0d5`（107）、`65124f2`（106）、`e780242`（105）、`5da6b37`（104）。
+- **测试基线**：687 backend / 66 frontend。
+- **关键决策**：
+  - 思考强度能力表：Claude 5 档（low/medium/high/xhigh/max，`--effort`），Codex 3 档（`-c model_reasoning_effort=`），Gemini / OpenCode 不显示（本机未安装、未核实）。
+  - 新建会话：工具头「+」直接开，项目目录沿用该工具最近会话，首次才询问一次；模型 / 强度在上下文条内切换，只影响本会话。
+  - 历史：默认只读；「继续」见 112，Claude `--resume`、Codex `exec resume`（均已核实）。
+  - 导入：JSON 与 TOML 并存；`~/.codex/config.toml` 里 `model_providers.custom` 含明文 bearer token，导入必须进密钥库且不回显。
+- **未决问题**：`docs/design/03-hifi/` 缺 103–107/110 之后所有 PNG 快照（Penpot 插件不能写本地文件，CUA 被 URL 校验拦住）；需用户手动导出或换可行方式。
+- **环境坑**：Penpot 标签页会休眠，报错时请用户点一下；`cdn.jsdelivr.net` 不通但 `unpkg.com` 可用；长文本写文件优先用 Node REPL 的 fs，PowerShell 双引号里反引号会被当转义。
+- **Penpot**：文件「新建文件 1」→ 页面「主页面」；画板按行排列（工作台/供应商/切换/导入/对话/历史）。新增画板沿用 1440 宽、640 对话框、现有 26 个令牌。
+
 ## 当前状态
 
 - 骨架完成：后端 health 端点 + 1 个测试；前端调通 `/api/health`；`scripts/check.py` 七道门 + CI 打通。
