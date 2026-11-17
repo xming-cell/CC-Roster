@@ -4,7 +4,7 @@ import { createPinia } from 'pinia'
 
 import App from '../App.vue'
 import router from '../router'
-import { getByRole } from './dom'
+import { getByRole, getByText } from './dom'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return {
@@ -14,8 +14,8 @@ function jsonResponse(body: unknown, status = 200): Response {
   } as unknown as Response
 }
 
-async function mountApp() {
-  await router.push('/')
+async function mountApp(path = '/') {
+  await router.push(path)
   await router.isReady()
   const wrapper = mount(App, {
     global: { plugins: [createPinia(), router] },
@@ -26,45 +26,36 @@ async function mountApp() {
 
 describe('App', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ status: 'ok' })))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ tools: [], warnings: [] })))
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
   })
 
-  it('renders the home route with backend status', async () => {
-    const wrapper = await mountApp()
+  it('opens the workbench at / and marks the only available entry as current', async () => {
+    const wrapper = await mountApp('/')
 
-    expect(wrapper.text()).toContain('backend: ok')
+    const nav = getByRole(wrapper, 'navigation')
+    expect(nav.findAll('a')).toHaveLength(1)
+
+    const link = getByRole(nav, 'link', { name: '工作台' })
+    expect(link.attributes('href')).toBe('/')
+    expect(link.attributes('aria-current')).toBe('page')
+
+    expect(nav.text()).not.toContain('首页')
+    expect(nav.text()).not.toContain('供应商')
+    expect(nav.text()).not.toContain('操作记录')
+    expect(nav.text()).not.toContain('用量')
+    expect(nav.text()).not.toContain('设置')
+
+    expect(getByText(wrapper, '尚未发现已安装的 AI 工具')).toBeTruthy()
   })
 
-  it('shows a readable error when the backend is unreachable', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+  it('redirects the legacy /tools entry to the same workbench', async () => {
+    const wrapper = await mountApp('/tools')
 
-    const wrapper = await mountApp()
-
-    expect(wrapper.text()).toContain('backend: error')
-    expect(wrapper.text()).toContain('无法连接后端服务')
-  })
-
-  it('links to the tools route and renders the tools view', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((path: string) =>
-        Promise.resolve(
-          jsonResponse(path === '/api/tools' ? { tools: [], warnings: [] } : { status: 'ok' }),
-        ),
-      ),
-    )
-    const wrapper = await mountApp()
-
-    const link = getByRole(wrapper, 'link', { name: '工具' })
-    expect(link.attributes('href')).toBe('/tools')
-
-    await router.push('/tools')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('未发现已安装的 AI 工具')
+    expect(router.currentRoute.value.path).toBe('/')
+    expect(getByText(wrapper, '尚未发现已安装的 AI 工具')).toBeTruthy()
   })
 })

@@ -13,6 +13,7 @@ export const useToolsStore = defineStore('tools', () => {
   const tools = ref<ToolView[]>([])
   const warnings = ref<ToolWarning[]>([])
   const loading = ref(false)
+  const loaded = ref(false)
   const error = ref<string | null>(null)
 
   const selectedToolId = ref<string | null>(null)
@@ -20,37 +21,68 @@ export const useToolsStore = defineStore('tools', () => {
   const detailLoading = ref(false)
   const detailError = ref<string | null>(null)
 
+  let listRequestId = 0
+  let detailRequestId = 0
+
   async function fetchTools(): Promise<void> {
+    const requestId = ++listRequestId
     loading.value = true
     error.value = null
+
     try {
       const response = await getTools()
+      if (requestId !== listRequestId) {
+        return
+      }
       tools.value = response.tools
       warnings.value = response.warnings
+      loaded.value = true
     } catch (caught) {
-      tools.value = []
-      warnings.value = []
+      if (requestId !== listRequestId) {
+        return
+      }
       error.value = errorMessage(caught)
     } finally {
-      loading.value = false
+      if (requestId === listRequestId) {
+        loading.value = false
+      }
     }
   }
 
   async function selectTool(toolId: string): Promise<void> {
+    const alreadyLoaded =
+      selectedToolId.value === toolId &&
+      (detailLoading.value || (selectedTool.value !== null && detailError.value === null))
+    if (alreadyLoaded) {
+      return
+    }
+
+    const requestId = ++detailRequestId
     selectedToolId.value = toolId
     selectedTool.value = null
     detailError.value = null
     detailLoading.value = true
+
     try {
-      selectedTool.value = await getTool(toolId)
+      const result = await getTool(toolId)
+      if (requestId !== detailRequestId || selectedToolId.value !== toolId) {
+        return
+      }
+      selectedTool.value = result
     } catch (caught) {
+      if (requestId !== detailRequestId || selectedToolId.value !== toolId) {
+        return
+      }
       detailError.value = errorMessage(caught)
     } finally {
-      detailLoading.value = false
+      if (requestId === detailRequestId) {
+        detailLoading.value = false
+      }
     }
   }
 
   function clearSelection(): void {
+    detailRequestId += 1
     selectedToolId.value = null
     selectedTool.value = null
     detailError.value = null
@@ -61,6 +93,7 @@ export const useToolsStore = defineStore('tools', () => {
     tools,
     warnings,
     loading,
+    loaded,
     error,
     selectedToolId,
     selectedTool,

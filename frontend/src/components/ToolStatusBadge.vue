@@ -23,31 +23,34 @@ const label = computed(() => labels[props.status])
 
 <style scoped>
 .status-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 7px;
   border-radius: 999px;
-  padding: 0.125rem 0.5rem;
-  font-size: 0.75rem;
-  line-height: 1.5;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1.2;
   white-space: nowrap;
 }
 
 .status-badge--loading {
-  background: #eef2f6;
-  color: #475467;
+  background: var(--color-bg-subtle);
+  color: var(--color-text-secondary);
 }
 
 .status-badge--ok {
-  background: #e7f6ec;
-  color: #05603a;
+  background: var(--color-success-bg);
+  color: var(--color-success-fg);
 }
 
 .status-badge--unconfigured {
-  background: #fef0c7;
-  color: #93370d;
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
 }
 
 .status-badge--error {
-  background: #fee4e2;
-  color: #b42318;
+  background: var(--color-danger-bg);
+  color: var(--color-danger-fg);
 }
 </style>
