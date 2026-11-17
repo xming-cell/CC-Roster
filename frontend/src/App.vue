@@ -22,6 +22,13 @@ import BrandMark from './components/BrandMark.vue'
           </svg>
           <span class="app-nav__label">工作台</span>
         </RouterLink>
+        <RouterLink class="app-nav__link" to="/providers" aria-label="供应商">
+          <svg class="app-nav__icon app-nav__icon--outline" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <rect x="2.5" y="3" width="11" height="10" rx="2" />
+            <path d="M5 6h6M5 9h3" />
+          </svg>
+          <span class="app-nav__label">供应商</span>
+        </RouterLink>
       </nav>
     </aside>
 
@@ -106,6 +113,14 @@ import BrandMark from './components/BrandMark.vue'
   height: 16px;
   flex: none;
   fill: currentColor;
+}
+
+.app-nav__icon--outline {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
 }
 
 .app-main {

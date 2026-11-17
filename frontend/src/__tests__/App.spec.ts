@@ -14,6 +14,13 @@ function jsonResponse(body: unknown, status = 200): Response {
   } as unknown as Response
 }
 
+const emptyProfiles = {
+  profiles: [],
+  bindings: [],
+  secret_store: { backend: 'keyring', fallback: false, message: null },
+  warnings: [],
+}
+
 async function mountApp(path = '/') {
   await router.push(path)
   await router.isReady()
@@ -26,30 +33,48 @@ async function mountApp(path = '/') {
 
 describe('App', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ tools: [], warnings: [] })))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((path: string) => {
+        if (path === '/api/profiles') {
+          return Promise.resolve(jsonResponse(emptyProfiles))
+        }
+        return Promise.resolve(jsonResponse({ tools: [], warnings: [] }))
+      }),
+    )
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
   })
 
-  it('opens the workbench at / and marks the only available entry as current', async () => {
+  it('opens the workbench at / and marks it current while keeping the provider entry available', async () => {
     const wrapper = await mountApp('/')
 
     const nav = getByRole(wrapper, 'navigation')
-    expect(nav.findAll('a')).toHaveLength(1)
+    expect(nav.findAll('a')).toHaveLength(2)
 
-    const link = getByRole(nav, 'link', { name: '工作台' })
-    expect(link.attributes('href')).toBe('/')
-    expect(link.attributes('aria-current')).toBe('page')
-
-    expect(nav.text()).not.toContain('首页')
-    expect(nav.text()).not.toContain('供应商')
-    expect(nav.text()).not.toContain('操作记录')
-    expect(nav.text()).not.toContain('用量')
-    expect(nav.text()).not.toContain('设置')
+    const workbench = getByRole(nav, 'link', { name: '工作台' })
+    const providers = getByRole(nav, 'link', { name: '供应商' })
+    expect(workbench.attributes('href')).toBe('/')
+    expect(workbench.attributes('aria-current')).toBe('page')
+    expect(providers.attributes('href')).toBe('/providers')
+    expect(providers.attributes('aria-current')).toBeUndefined()
 
     expect(getByText(wrapper, '尚未发现已安装的 AI 工具')).toBeTruthy()
+  })
+
+  it('opens the provider page at /providers and marks its navigation entry current', async () => {
+    const wrapper = await mountApp('/providers')
+
+    const nav = getByRole(wrapper, 'navigation')
+    const workbench = getByRole(nav, 'link', { name: '工作台' })
+    const providers = getByRole(nav, 'link', { name: '供应商' })
+
+    expect(providers.attributes('aria-current')).toBe('page')
+    expect(workbench.attributes('aria-current')).toBeUndefined()
+    expect(getByText(wrapper, '选择一个工具')).toBeTruthy()
+    expect(getByText(wrapper, '按工具管理供应商与绑定关系')).toBeTruthy()
   })
 
   it('redirects the legacy /tools entry to the same workbench', async () => {

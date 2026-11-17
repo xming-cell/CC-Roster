@@ -9,6 +9,11 @@ const router = createRouter({
       component: () => import('../views/WorkbenchView.vue'),
     },
     {
+      path: '/providers',
+      name: 'providers',
+      component: () => import('../views/ProvidersView.vue'),
+    },
+    {
       path: '/tools',
       redirect: { name: 'workbench' },
     },
