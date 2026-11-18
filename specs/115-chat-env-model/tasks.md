@@ -6,14 +6,14 @@
 - [x] T2 失败测试：父环境 `SystemRoot` 保留、Claude 不传 `--model`、终端 spawner 继承环境。
 - [x] T3 修复：统一环境合并并在 Windows 同时补齐 `SYSTEMROOT` / `SystemRoot`。
 - [x] T4 修复：Claude 使用 `ANTHROPIC_MODEL`；会话模型切换同步进入 env；Codex `--model` 不变。
-- [x] T5 完整验收并回填；真实模型对话复测待用户执行。
+- [x] T5 完整验收并回填；用户真实 DeepSeek 对话复测通过。
 
 ## 手动验收
 
 | # | 操作步骤 | 预期 | 实际结果 |
 |---|---|---|---|
-| 1 | 用 DeepSeek / 第三方 Anthropic 兼容模型发消息 | 不再报 `unrecognized_model` | 待用户真实复测 |
-| 2 | 同上，观察 Windows 子进程 | 不再报 `SystemRoot` 缺失 | 待用户真实复测 |
+| 1 | 用 DeepSeek / 第三方 Anthropic 兼容模型发消息 | 不再报 `unrecognized_model` | 通过：用户复测对话正常 |
+| 2 | 同上，观察 Windows 子进程 | 不再报 `SystemRoot` 缺失 | 通过：用户复测对话正常 |
 | 3 | 切换会话模型 | 后续消息使用新模型 | 通过：env `ANTHROPIC_MODEL` 测试 |
 | 4 | Codex 对话 | 仍通过 `--model` 选择模型 | 通过：现有命令测试 |
 
