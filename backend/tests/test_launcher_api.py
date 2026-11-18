@@ -284,6 +284,7 @@ def test_terminal_spawner_merges_parent_environment(tmp_path: Path, monkeypatch)
         return FakeProcess()
 
     monkeypatch.setenv("SystemRoot", r"C:\Windows")
+    monkeypatch.setattr("app.services.launcher._windows_creation_flags", lambda: 0)
     monkeypatch.setattr("app.services.launcher.subprocess.Popen", fake_popen)
 
     spawner = SubprocessTerminalSpawner(platform="win32")

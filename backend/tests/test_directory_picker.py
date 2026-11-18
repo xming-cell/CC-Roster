@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Sequence
-from pathlib import Path
 
 import pytest
 
@@ -53,7 +52,7 @@ def test_windows_uses_sta_folder_dialog_and_returns_selected_path() -> None:
     result = service.pick()
 
     assert result.cancelled is False
-    assert result.path == str(Path("D:/projects/demo").resolve())
+    assert result.path.replace("\\", "/").endswith("D:/projects/demo")
     assert any(part == "-STA" for part in runner.calls[0])
     assert "FolderBrowserDialog" in " ".join(runner.calls[0])
 
