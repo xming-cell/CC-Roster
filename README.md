@@ -16,23 +16,21 @@ CC-Roster 不做「又一个 AI 客户端」，而是先把配置这层基础设
 
 ## 当前状态
 
-**v0.0.1 · 基础设施阶段。** 任务卡 004（工具发现与只读配置）已完成；001–003 已完成。
+**V2 功能开发完成，进入验收与发布。** 104–114 已完成；109 正在做真人 E2E、性能与发布收口。
 
 已落地：
 
-- FastAPI 后端 + `GET /api/health`；所有错误统一返回 `{code, message}`
-- 跨平台数据目录、SQLite 索引（WAL + `user_version` 幂等迁移）、原子 JSON 写与跨平台文件锁
-- 结构化日志（stdout + 文件）与按 ADR-006 三档规则实现的密钥脱敏
-- 本地安全边界：仅监听 `127.0.0.1`、CORS 白名单、1 MiB 请求体上限
-- Vue 3 前端请求层（统一 `ApiError`）、路由、Pinia store 与应用壳；首页展示 `backend: ok`
-- 工具发现（只读）：Claude Code / Codex CLI 适配器、`GET /api/tools`、`GET /api/tools/{tool_id}` 与前端 `/tools` 页面；密钥只返回脱敏预览，读取不写盘
-- `scripts/check.py` 一键验收（含改动范围 / 禁用写法门禁），GitHub Actions CI 已接通
-- 需求草案、后续任务拆解与架构决策（`docs/requirements.md`、`docs/task-plan.md`、`docs/decisions.md`）
+- FastAPI 后端 + Vue 3 前端；统一 `{code, message}` 错误、跨平台数据目录、原子写与密钥脱敏
+- 工具发现：Claude Code / Codex CLI / Gemini CLI / OpenCode；只读扫描不修改配置
+- 供应商：多供应商绑定、切换预览 / 应用 / 回滚、JSON / TOML 导入，以及从 4 个工具本机配置读取；导入后绑定来源工具并保持未启用
+- 对话工作台：能力驱动的模型 / 思考强度、流式输出、过程折叠、中断与重试
+- 历史：只读回放、项目分组、分页；支持在历史底部直接输入并 resume 出新会话
+- 操作记录、用量、设置、原生项目目录选择
+- `scripts/check.py` 一键验收（含改动范围 / 禁用写法门禁），GitHub Actions 三平台 CI 已接通
 
-规划中：
+待完成：
 
-- 配置写入：可回滚地修改工具配置
-- 在线聊天与 agent 会话
+- 109：真人 E2E、性能实测、三平台 CI 结果确认与发布清单
 
 ## 设计原则
 
