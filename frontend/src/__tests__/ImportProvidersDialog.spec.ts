@@ -4,6 +4,7 @@ import type { VueWrapper } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 
 import type { ProfileImportPreview, ProfileImportResult } from '../api/profileImport'
+import type { ToolView } from '../api/tools'
 import ImportProvidersDialog from '../components/ImportProvidersDialog.vue'
 import { getByRole, getByText } from './dom'
 
@@ -26,6 +27,7 @@ const validPreview: ProfileImportPreview = {
   source: 'content',
   source_path: null,
   format: 'json',
+  tool_id: null,
 }
 
 const invalidPreview: ProfileImportPreview = {
@@ -47,7 +49,51 @@ const invalidPreview: ProfileImportPreview = {
   source: 'content',
   source_path: null,
   format: 'json',
+  tool_id: null,
 }
+
+const NOW = '2026-11-18T10:00:00+00:00'
+
+function makeTool(id: string, displayName: string, overrides: Partial<ToolView> = {}): ToolView {
+  return {
+    id,
+    display_name: displayName,
+    status: 'ok',
+    installed: true,
+    configured: true,
+    version: null,
+    provider: null,
+    base_url: null,
+    model: null,
+    is_third_party: null,
+    config_path: '/home/me/' + id + '/config',
+    last_modified: NOW,
+    has_secret: false,
+    secret_preview: null,
+    warnings: [],
+    capabilities: {
+      read: true,
+      write: true,
+      sessions: true,
+      launch: true,
+      write_mode: 'managed_fields',
+      resume: true,
+    },
+    ...overrides,
+  }
+}
+
+const dialogTools: ToolView[] = [
+  makeTool('claude-code', 'Claude Code', { config_path: '/home/me/.claude/settings.json' }),
+  makeTool('codex-cli', 'Codex CLI', { config_path: '/home/me/.codex/config.toml' }),
+  makeTool('gemini-cli', 'Gemini CLI', {
+    status: 'unconfigured',
+    configured: false,
+    config_path: '/home/me/.gemini/settings.json',
+    last_modified: null,
+  }),
+  makeTool('opencode', 'OpenCode', { config_path: '/home/me/.opencode/opencode.json' }),
+]
 
 const importResult: ProfileImportResult = {
   imported: 2,
@@ -57,33 +103,25 @@ const importResult: ProfileImportResult = {
 }
 
 
-const codexPreview: ProfileImportPreview = {
+const localPreview: ProfileImportPreview = {
   schema_version: 1,
   items: [
     {
       index: 0,
-      name: '自建兼容',
+      name: 'Anthropic 本机配置',
       status: 'new',
       reasons: [],
-      notes: [],
+      notes: ['来自 settings.json · 默认模型 claude-opus-4-5'],
       has_secret: true,
       conflict_profile_id: null,
     },
-    {
-      index: 1,
-      name: 'OpenAI 官方',
-      status: 'new',
-      reasons: [],
-      notes: ['未读取 env_key, 导入后需在供应商页补充密钥'],
-      has_secret: false,
-      conflict_profile_id: null,
-    },
   ],
-  totals: { new: 2, duplicate: 0, invalid: 0 },
+  totals: { new: 1, duplicate: 0, invalid: 0 },
   can_import: true,
-  source: 'codex_config',
-  source_path: '/home/me/.codex/config.toml',
-  format: 'toml',
+  source: 'local_config',
+  source_path: '/home/me/.claude/settings.json',
+  format: 'json',
+  tool_id: 'claude-code',
 }
 
 interface CallRecord {
@@ -94,14 +132,14 @@ interface CallRecord {
 function makeServer(options: {
   preview?: { status: number; body: unknown }
   import?: { status: number; body: unknown }
-  codexPreview?: { status: number; body: unknown }
-  codexImport?: { status: number; body: unknown }
+  localPreview?: { status: number; body: unknown }
+  localImport?: { status: number; body: unknown }
 } = {}) {
   const calls: CallRecord[] = []
   const preview = options.preview ?? { status: 200, body: validPreview }
   const imported = options.import ?? { status: 201, body: importResult }
-  const codexPreview = options.codexPreview ?? { status: 200, body: validPreview }
-  const codexImported = options.codexImport ?? { status: 201, body: importResult }
+  const localPreviewResponse = options.localPreview ?? { status: 200, body: localPreview }
+  const localImported = options.localImport ?? { status: 201, body: importResult }
   vi.stubGlobal(
     'fetch',
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -114,11 +152,13 @@ function makeServer(options: {
       if (url === '/api/profiles/import') {
         return Promise.resolve(jsonResponse(imported.body, imported.status))
       }
-      if (url === '/api/profiles/import/codex/preview') {
-        return Promise.resolve(jsonResponse(codexPreview.body, codexPreview.status))
+      if (url === '/api/profiles/import/local/claude-code/preview') {
+        return Promise.resolve(
+          jsonResponse(localPreviewResponse.body, localPreviewResponse.status),
+        )
       }
-      if (url === '/api/profiles/import/codex') {
-        return Promise.resolve(jsonResponse(codexImported.body, codexImported.status))
+      if (url === '/api/profiles/import/local/claude-code') {
+        return Promise.resolve(jsonResponse(localImported.body, localImported.status))
       }
       return Promise.reject(new Error(`unexpected request: ${url}`))
     }),
@@ -128,6 +168,7 @@ function makeServer(options: {
 
 function mountDialog() {
   return mount(ImportProvidersDialog, {
+    props: { tools: dialogTools, currentToolId: 'codex-cli' },
     global: { plugins: [createPinia()] },
     attachTo: document.body,
   })
@@ -184,6 +225,7 @@ describe('ImportProvidersDialog', () => {
 
     const importCall = calls.find((call) => call.url === '/api/profiles/import')
     expect(importCall?.body.policy).toBe('overwrite')
+    expect(importCall?.body.tool_id).toBe('codex-cli')
     expect(wrapper.emitted('imported')).toHaveLength(1)
     expect(wrapper.emitted('close')).toHaveLength(1)
   })
@@ -214,24 +256,30 @@ describe('ImportProvidersDialog', () => {
     expect(wrapper.text()).toContain('无密钥')
   })
 
-  it('reads Codex configuration, previews providers and imports through the codex endpoint', async () => {
-    const calls = makeServer({ codexPreview: { status: 200, body: codexPreview } })
+  it('lists local tools, previews Claude config and imports through the local endpoint', async () => {
+    const calls = makeServer()
     const wrapper = mountDialog()
 
-    await getByRole(wrapper, 'button', { name: '从 Codex 配置读取' }).trigger('click')
-    const readButton = wrapper.findAll('button').find((button) => button.text() === '读取 Codex 配置')
-    if (readButton === undefined) throw new Error('未找到读取 Codex 配置按钮')
-    await readButton.trigger('click')
+    await getByRole(wrapper, 'button', { name: '从本机配置读取' }).trigger('click')
+    expect(wrapper.text()).toContain('Claude Code')
+    expect(wrapper.text()).toContain('Codex CLI')
+    expect(wrapper.text()).toContain('未发现配置')
+
+    await getByRole(wrapper, 'button', { name: '读取所选配置' }).trigger('click')
     await flushPromises()
 
-    expect(calls.some((call) => call.url === '/api/profiles/import/codex/preview')).toBe(true)
-    expect(wrapper.text()).toContain('/home/me/.codex/config.toml')
-    expect(wrapper.text()).toContain('自建兼容')
-    expect(wrapper.text()).toContain('未读取 env_key')
+    expect(calls.some((call) => call.url === '/api/profiles/import/local/claude-code/preview')).toBe(true)
+    expect(wrapper.text()).toContain('/home/me/.claude/settings.json')
+    expect(wrapper.text()).toContain('Anthropic 本机配置')
+    expect(wrapper.text()).toContain('有密钥')
 
     await getByRole(wrapper, 'button', { name: '确认导入' }).trigger('click')
     await flushPromises()
-    expect(calls.some((call) => call.url === '/api/profiles/import/codex' && call.body.policy === 'skip')).toBe(true)
+    const importCall = calls.find(
+      (call) => call.url === '/api/profiles/import/local/claude-code',
+    )
+    expect(importCall?.body.policy).toBe('skip')
+    expect(wrapper.emitted('imported')?.[0]?.[1]).toBe('claude-code')
   })
 
   it('rejects non-json files without calling the backend', async () => {

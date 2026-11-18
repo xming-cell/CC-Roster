@@ -174,7 +174,7 @@ async function handleRemove(profileId: string): Promise<void> {
 }
 
 function openImport(): void {
-  if (readOnly.value) {
+  if (readOnly.value || selectedToolId.value === null) {
     return
   }
   importTrigger = rememberFocus(addButton.value)
@@ -188,7 +188,10 @@ async function closeImport(): Promise<void> {
   importTrigger?.focus()
 }
 
-async function handleImported(result: ProfileImportResult): Promise<void> {
+async function handleImported(
+  result: ProfileImportResult,
+  toolId: string | null,
+): Promise<void> {
   importOpen.value = false
   const parts: string[] = []
   if (result.imported > 0) {
@@ -200,8 +203,23 @@ async function handleImported(result: ProfileImportResult): Promise<void> {
   if (result.skipped > 0) {
     parts.push('跳过 ' + result.skipped + ' 条')
   }
-  importNotice.value = parts.length === 0 ? '没有需要导入的供应商。' : '导入完成：' + parts.join('，') + '。'
-  await refreshPage()
+  const targetToolId = toolId ?? selectedToolId.value
+  const targetName = tools.value.find((tool) => tool.id === targetToolId)?.display_name ?? null
+  if (parts.length === 0) {
+    importNotice.value = '没有需要导入的供应商。'
+  } else {
+    importNotice.value =
+      '导入完成：' +
+      parts.join('，') +
+      (targetName !== null ? '，已绑定到 ' + targetName + '，未启用。' : '。')
+  }
+  await toolsStore.fetchTools()
+  await profilesStore.fetchSummary()
+  if (targetToolId !== null && targetToolId !== selectedToolId.value) {
+    await profilesStore.selectTool(targetToolId)
+  } else {
+    await profilesStore.reloadSelected()
+  }
 }
 
 function openSwitch(profileId: string): void {
@@ -298,7 +316,15 @@ async function confirmDelete(): Promise<void> {
           </p>
         </div>
         <div class="providers__actions">
-          <button class="button button--secondary" type="button" :disabled="readOnly" :title="readOnly ? '只读模式已开启' : undefined" @click="openImport">导入</button>
+          <button
+            class="button button--secondary"
+            type="button"
+            :disabled="readOnly || selectedToolId === null"
+            :title="readOnly ? '只读模式已开启' : selectedToolId === null ? '先选择一个工具' : undefined"
+            @click="openImport"
+          >
+            导入
+          </button>
           <button
             ref="addButton"
             class="button"
@@ -375,6 +401,8 @@ async function confirmDelete(): Promise<void> {
 
     <ImportProvidersDialog
       v-if="importOpen"
+      :tools="tools"
+      :current-tool-id="selectedToolId ?? ''"
       @close="closeImport"
       @imported="handleImported"
     />

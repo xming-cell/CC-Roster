@@ -24,9 +24,10 @@ export interface ProfileImportPreview {
   items: ProfileImportItem[]
   totals: ProfileImportTotals
   can_import: boolean
-  source: 'content' | 'codex_config'
+  source: 'content' | 'codex_config' | 'local_config'
   source_path: string | null
   format: 'json' | 'toml'
+  tool_id: string | null
 }
 
 export interface ProfileImportResult {
@@ -44,10 +45,13 @@ function jsonInit(body: unknown): RequestInit {
   }
 }
 
-export function previewProfileImport(content: string): Promise<ProfileImportPreview> {
+export function previewProfileImport(
+  content: string,
+  toolId?: string,
+): Promise<ProfileImportPreview> {
   return requestJson<ProfileImportPreview>(
     '/api/profiles/import/preview',
-    jsonInit({ content }),
+    jsonInit({ content, tool_id: toolId ?? null }),
     { timeoutMs: 20_000 },
   )
 }
@@ -55,10 +59,11 @@ export function previewProfileImport(content: string): Promise<ProfileImportPrev
 export function importProfiles(
   content: string,
   policy: ImportPolicy,
+  toolId?: string,
 ): Promise<ProfileImportResult> {
   return requestJson<ProfileImportResult>(
     '/api/profiles/import',
-    jsonInit({ content, policy }),
+    jsonInit({ content, policy, tool_id: toolId ?? null }),
     { timeoutMs: 30_000 },
   )
 }
@@ -74,6 +79,25 @@ export function previewCodexConfigImport(): Promise<ProfileImportPreview> {
 export function importCodexProfiles(policy: ImportPolicy): Promise<ProfileImportResult> {
   return requestJson<ProfileImportResult>(
     '/api/profiles/import/codex',
+    jsonInit({ policy }),
+    { timeoutMs: 30_000 },
+  )
+}
+
+export function previewLocalConfigImport(toolId: string): Promise<ProfileImportPreview> {
+  return requestJson<ProfileImportPreview>(
+    `/api/profiles/import/local/${encodeURIComponent(toolId)}/preview`,
+    { method: 'POST' },
+    { timeoutMs: 20_000 },
+  )
+}
+
+export function importLocalProfiles(
+  toolId: string,
+  policy: ImportPolicy,
+): Promise<ProfileImportResult> {
+  return requestJson<ProfileImportResult>(
+    `/api/profiles/import/local/${encodeURIComponent(toolId)}`,
     jsonInit({ policy }),
     { timeoutMs: 30_000 },
   )

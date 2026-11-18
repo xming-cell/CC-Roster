@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 
 import type { BindingView, HealthCheckResponse, ProfileListResponse, ProfileView } from '../api/profiles'
 import type { ToolView } from '../api/tools'
+import ImportProvidersDialog from '../components/ImportProvidersDialog.vue'
 import ProvidersView from '../views/ProvidersView.vue'
 import { useSettingsStore } from '../stores/settings'
 import { getByRole, getByText } from './dom'
@@ -512,6 +513,31 @@ describe('ProvidersView', () => {
     expect(cardFor(wrapper, 'Anthropic 官方').text()).toContain('claude-sonnet-4-5')
   })
 
+  it('switches to the imported tool and shows the bound provider', async () => {
+    const server = new FakeServer()
+    const wrapper = mountProviders(server)
+    await settle()
+
+    await getByRole(wrapper, 'button', { name: 'Codex CLI' }).trigger('click')
+    await settle()
+    await getByRole(wrapper, 'button', { name: '导入' }).trigger('click')
+    await flushPromises()
+
+    const dialog = wrapper.findComponent(ImportProvidersDialog)
+    dialog.vm.$emit(
+      'imported',
+      { imported: 1, overwritten: 0, skipped: 0, profile_ids: ['profile-a'] },
+      'claude-code',
+    )
+    await settle()
+
+    expect(
+      server.calls.some(
+        (call) => call.method === 'GET' && call.path === '/api/profiles?tool_id=claude-code',
+      ),
+    ).toBe(true)
+    expect(wrapper.text()).toContain('Anthropic 官方')
+  })
   it('keeps the newest tool response when switching tools quickly', async () => {
     const server = new FakeServer({
       profiles: [profileA, profileB, profileC],

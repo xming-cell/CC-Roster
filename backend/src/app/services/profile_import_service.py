@@ -18,17 +18,22 @@ from typing import Any
 from pydantic import ValidationError
 from pydantic_core import ErrorDetails
 
+from app.adapters.claude_code import resolve_claude_config_dir
 from app.adapters.codex_cli import resolve_codex_config_dir
+from app.adapters.gemini_cli import resolve_gemini_config_dir
+from app.adapters.opencode import resolve_opencode_config_dir
 from app.core.clock import utc_now
 from app.core.errors import AppError
 from app.repositories.audit import AuditRepository
 from app.repositories.profiles import ProfileRepository
 from app.repositories.secrets import SecretStore
-from app.schemas.profile import Profile, ProfileCreate, ProfileStore, SecretRef
+from app.schemas.profile import Profile, ProfileCreate, ProfileStore, SecretRef, ToolBinding
 from app.schemas.profile_import import (
     MAX_IMPORT_ITEMS,
     SUPPORTED_IMPORT_VERSION,
+    ImportFormat,
     ImportPolicy,
+    ImportSource,
     ProfileImportItem,
     ProfileImportPreview,
     ProfileImportRequest,
@@ -56,20 +61,42 @@ class ProfileImportService:
 
     def preview(self, request: ProfileImportRequest) -> ProfileImportPreview:
         parsed, import_format = _parse_content(request.content)
-        store = self._repository.load()
-        items, _candidates = _analyze(parsed, store.profiles)
-        totals = _totals(items)
-        return ProfileImportPreview(
-            schema_version=SUPPORTED_IMPORT_VERSION,
-            items=items,
-            totals=totals,
-            can_import=totals.invalid == 0,
+        return self._preview_parsed(
+            parsed,
+            import_format=import_format,
             source="content",
-            format=import_format,
+            tool_id=request.tool_id,
         )
 
     def preview_codex(self) -> ProfileImportPreview:
         parsed, source_path = self._load_codex_config()
+        return self._preview_parsed(
+            parsed,
+            import_format="toml",
+            source="codex_config",
+            source_path=str(source_path),
+            tool_id="codex-cli",
+        )
+
+    def preview_local(self, tool_id: str) -> ProfileImportPreview:
+        parsed, source_path, import_format = self._load_local_config(tool_id)
+        return self._preview_parsed(
+            parsed,
+            import_format=import_format,
+            source="local_config",
+            source_path=str(source_path),
+            tool_id=tool_id,
+        )
+
+    def _preview_parsed(
+        self,
+        parsed: list[Any],
+        *,
+        import_format: ImportFormat,
+        source: ImportSource,
+        source_path: str | None = None,
+        tool_id: str | None = None,
+    ) -> ProfileImportPreview:
         store = self._repository.load()
         items, _candidates = _analyze(parsed, store.profiles)
         totals = _totals(items)
@@ -78,18 +105,38 @@ class ProfileImportService:
             items=items,
             totals=totals,
             can_import=totals.invalid == 0,
-            source="codex_config",
-            source_path=str(source_path),
-            format="toml",
+            source=source,
+            source_path=source_path,
+            format=import_format,
+            tool_id=tool_id,
         )
 
     def import_profiles(self, request: ProfileImportRequest) -> ProfileImportResult:
         parsed, _import_format = _parse_content(request.content)
-        return self._import_parsed(parsed, request.policy, source_label="导入供应商")
+        return self._import_parsed(
+            parsed,
+            request.policy,
+            source_label="导入供应商",
+            bind_tool_id=request.tool_id,
+        )
 
     def import_codex(self, policy: ImportPolicy) -> ProfileImportResult:
         parsed, _source_path = self._load_codex_config()
-        return self._import_parsed(parsed, policy, source_label="从 Codex 配置导入供应商")
+        return self._import_parsed(
+            parsed,
+            policy,
+            source_label="从 Codex 配置导入供应商",
+            bind_tool_id="codex-cli",
+        )
+
+    def import_local(self, tool_id: str, policy: ImportPolicy) -> ProfileImportResult:
+        parsed, _source_path, _import_format = self._load_local_config(tool_id)
+        return self._import_parsed(
+            parsed,
+            policy,
+            source_label=f"从 {tool_id} 本机配置导入供应商",
+            bind_tool_id=tool_id,
+        )
 
     def _import_parsed(
         self,
@@ -97,6 +144,7 @@ class ProfileImportService:
         policy: ImportPolicy,
         *,
         source_label: str,
+        bind_tool_id: str | None = None,
     ) -> ProfileImportResult:
         store = self._repository.load()
         items, candidates = _analyze(parsed, store.profiles)
@@ -116,6 +164,7 @@ class ProfileImportService:
         created_secret_refs: list[SecretRef] = []
         created_profiles: list[tuple[_DedupeKey, Profile]] = []
         overwritten_profiles: list[tuple[str, Profile, SecretRef | None]] = []
+        bindings_to_add: list[ToolBinding] = []
 
         try:
             for key, candidate in creates:
@@ -160,6 +209,23 @@ class ProfileImportService:
                     )
                 )
 
+            if bind_tool_id is not None:
+                bound_pairs = {(binding.tool_id, binding.profile_id) for binding in store.bindings}
+                for _key_value, profile in created_profiles:
+                    pair = (bind_tool_id, profile.id)
+                    if pair not in bound_pairs:
+                        bindings_to_add.append(
+                            ToolBinding(tool_id=bind_tool_id, profile_id=profile.id, bound_at=now)
+                        )
+                        bound_pairs.add(pair)
+                for existing_id, _profile, _ref in overwritten_profiles:
+                    pair = (bind_tool_id, existing_id)
+                    if pair not in bound_pairs:
+                        bindings_to_add.append(
+                            ToolBinding(tool_id=bind_tool_id, profile_id=existing_id, bound_at=now)
+                        )
+                        bound_pairs.add(pair)
+
             def change(current: ProfileStore) -> None:
                 existing_keys = {
                     _key(profile.name, profile.protocol, profile.base_url)
@@ -177,6 +243,14 @@ class ProfileImportService:
                 current.profiles = [
                     replacements.get(profile.id, profile) for profile in current.profiles
                 ]
+                existing_pairs = {
+                    (binding.tool_id, binding.profile_id) for binding in current.bindings
+                }
+                for binding in bindings_to_add:
+                    pair = (binding.tool_id, binding.profile_id)
+                    if pair not in existing_pairs:
+                        current.bindings.append(binding)
+                        existing_pairs.add(pair)
 
             self._repository.mutate(change)
         except Exception:
@@ -214,6 +288,22 @@ class ProfileImportService:
             ) from exc
         return _parse_codex_config(content), path
 
+    def _load_local_config(self, tool_id: str) -> tuple[list[Any], Path, ImportFormat]:
+        home = Path.home()
+        if tool_id == "codex-cli":
+            parsed, path = self._load_codex_config()
+            return parsed, path, "toml"
+        if tool_id == "claude-code":
+            path = resolve_claude_config_dir(environ=os.environ, home=home) / "settings.json"
+            return _claude_candidates(_read_json_config(path, "Claude Code")), path, "json"
+        if tool_id == "gemini-cli":
+            path = resolve_gemini_config_dir(environ=os.environ, home=home) / "settings.json"
+            return _gemini_candidates(_read_json_config(path, "Gemini CLI")), path, "json"
+        if tool_id == "opencode":
+            path = resolve_opencode_config_dir(environ=os.environ, home=home) / "opencode.json"
+            return _opencode_candidates(_read_json_config(path, "OpenCode")), path, "json"
+        raise AppError("LOCAL_IMPORT_UNSUPPORTED_TOOL", f"不支持从本机配置导入: {tool_id}", 422)
+
     def _put_secret(self, profile_id: str, candidate: ProfileCreate) -> SecretRef | None:
         if candidate.secret is None:
             return None
@@ -240,7 +330,7 @@ class ProfileImportService:
             logger.warning("供应商导入审计写入失败", exc_info=True)
 
 
-def _parse_content(content: str) -> tuple[list[Any], str]:
+def _parse_content(content: str) -> tuple[list[Any], ImportFormat]:
     cleaned = content.lstrip("\ufeff")
     if not cleaned.strip():
         raise AppError("IMPORT_EMPTY", "导入文件里没有供应商", 422)
@@ -282,6 +372,115 @@ def _extract_profiles(data: Any) -> list[Any]:
     if len(profiles) > MAX_IMPORT_ITEMS:
         raise AppError("IMPORT_TOO_MANY_ITEMS", f"一次最多导入 {MAX_IMPORT_ITEMS} 条", 422)
     return list(profiles)
+
+
+def _read_json_config(path: Path, label: str) -> dict[str, Any]:
+    try:
+        content = path.read_text(encoding="utf-8-sig")
+    except FileNotFoundError as exc:
+        raise AppError("LOCAL_CONFIG_NOT_FOUND", f"未找到 {label} 配置文件: {path}", 422) from exc
+    except OSError as exc:
+        raise AppError(
+            "LOCAL_CONFIG_UNREADABLE", f"无法读取 {label} 配置文件: {path}", 422
+        ) from exc
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError as exc:
+        raise AppError("LOCAL_CONFIG_PARSE_ERROR", f"{label} 配置不是合法 JSON", 422) from exc
+    if not isinstance(parsed, dict):
+        raise AppError("LOCAL_CONFIG_INVALID_SHAPE", f"{label} 配置顶层必须是对象", 422)
+    return parsed
+
+
+def _text(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _models(values: Iterable[object]) -> list[dict[str, object]]:
+    seen: set[str] = set()
+    result: list[dict[str, object]] = []
+    for value in values:
+        model = _text(value)
+        if model is None or model in seen:
+            continue
+        seen.add(model)
+        result.append({"id": model, "display_name": None})
+    return result
+
+
+def _claude_candidates(data: dict[str, Any]) -> list[Any]:
+    raw_env = data.get("env")
+    env = raw_env if isinstance(raw_env, Mapping) else {}
+    base_url = _text(env.get("ANTHROPIC_BASE_URL"))
+    secret = _text(env.get("ANTHROPIC_AUTH_TOKEN")) or _text(env.get("ANTHROPIC_API_KEY"))
+    models = _models(
+        [
+            env.get("ANTHROPIC_MODEL"),
+            env.get("ANTHROPIC_DEFAULT_OPUS_MODEL"),
+            env.get("ANTHROPIC_DEFAULT_SONNET_MODEL"),
+            env.get("ANTHROPIC_DEFAULT_HAIKU_MODEL"),
+            data.get("model"),
+        ]
+    )
+    if base_url is None and secret is None and not models:
+        raise AppError("LOCAL_CONFIG_EMPTY", "Claude Code 配置里没有可导入的供应商字段", 422)
+    notes: list[str] = []
+    if base_url is None:
+        base_url = "https://api.anthropic.com"
+        notes.append("base_url 来自 Anthropic 官方默认值")
+    if secret is None:
+        notes.append("未发现本机密钥, 导入后需在供应商页补充")
+    candidate: dict[str, Any] = {
+        "name": "Anthropic 本机配置",
+        "protocol": "anthropic",
+        "base_url": base_url,
+        "models": models,
+    }
+    if secret is not None:
+        candidate["secret"] = secret
+    if notes:
+        candidate["_import_notes"] = notes
+    return [candidate]
+
+
+def _gemini_candidates(data: dict[str, Any]) -> list[Any]:
+    base_url = _text(data.get("baseUrl"))
+    if base_url is None:
+        raise AppError("LOCAL_CONFIG_EMPTY", "Gemini CLI 配置缺少 baseUrl, 无法生成供应商", 422)
+    model = _text(data.get("model"))
+    return [
+        {
+            "name": "Gemini 本机配置",
+            "protocol": "openai",
+            "base_url": base_url,
+            "models": _models([model]),
+            "_import_notes": ["未读取环境变量中的 API key, 导入后需在供应商页补充"],
+        }
+    ]
+
+
+def _opencode_candidates(data: dict[str, Any]) -> list[Any]:
+    raw_provider = data.get("provider")
+    provider = raw_provider if isinstance(raw_provider, Mapping) else {}
+    raw_openai = provider.get("openai")
+    openai = raw_openai if isinstance(raw_openai, Mapping) else {}
+    raw_options = openai.get("options")
+    options = raw_options if isinstance(raw_options, Mapping) else {}
+    base_url = _text(options.get("baseURL"))
+    if base_url is None:
+        raise AppError(
+            "LOCAL_CONFIG_EMPTY", "OpenCode 配置缺少 provider.openai.options.baseURL", 422
+        )
+    model = _text(data.get("model"))
+    return [
+        {
+            "name": "OpenCode 本机配置",
+            "protocol": "openai",
+            "base_url": base_url,
+            "models": _models([model]),
+            "_import_notes": ["未读取环境变量中的 API key, 导入后需在供应商页补充"],
+        }
+    ]
 
 
 def _parse_codex_config(content: str) -> list[Any]:

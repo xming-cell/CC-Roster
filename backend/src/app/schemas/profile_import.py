@@ -23,7 +23,7 @@ MAX_IMPORT_ITEMS = 500
 
 ImportItemStatus = Literal["new", "duplicate", "invalid"]
 ImportPolicy = Literal["skip", "overwrite"]
-ImportSource = Literal["content", "codex_config"]
+ImportSource = Literal["content", "codex_config", "local_config"]
 ImportFormat = Literal["json", "toml"]
 
 
@@ -34,6 +34,7 @@ class ProfileImportRequest(BaseModel):
 
     content: str
     policy: ImportPolicy = "skip"
+    tool_id: str | None = None
 
     @field_validator("content")
     @classmethod
@@ -75,6 +76,7 @@ class ProfileImportPreview(BaseModel):
     source: ImportSource = "content"
     source_path: str | None = None
     format: ImportFormat = "json"
+    tool_id: str | None = None
 
 
 class ProfileImportResult(BaseModel):
@@ -90,6 +92,14 @@ class ProfileImportResult(BaseModel):
 
 class CodexProfileImportRequest(BaseModel):
     """直接读取 Codex 配置时只允许选择重复项策略。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    policy: ImportPolicy = "skip"
+
+
+class LocalProfileImportRequest(BaseModel):
+    """读取任一工具的本机配置时只允许选择重复项策略。"""
 
     model_config = ConfigDict(extra="forbid")
 

@@ -3,9 +3,9 @@ import { computed, ref } from 'vue'
 
 import { ApiError } from '../api/client'
 import {
-  importCodexProfiles,
+  importLocalProfiles,
   importProfiles,
-  previewCodexConfigImport,
+  previewLocalConfigImport,
   previewProfileImport,
 } from '../api/profileImport'
 import type {
@@ -14,19 +14,28 @@ import type {
   ProfileImportPreview,
   ProfileImportResult,
 } from '../api/profileImport'
+import type { ToolView } from '../api/tools'
 import { errorText } from '../utils/profileDisplay'
 import ModalShell from './ModalShell.vue'
 
 type Stage = 'select' | 'parsing' | 'preview' | 'importing' | 'error'
-type SourceMode = 'file' | 'codex'
+type SourceMode = 'file' | 'local'
+
+const LOCAL_TOOL_IDS = ['claude-code', 'codex-cli', 'gemini-cli', 'opencode'] as const
+
+const props = defineProps<{
+  tools: ToolView[]
+  currentToolId: string
+}>()
 
 const emit = defineEmits<{
   close: []
-  imported: [result: ProfileImportResult]
+  imported: [result: ProfileImportResult, toolId: string | null]
 }>()
 
 const stage = ref<Stage>('select')
 const sourceMode = ref<SourceMode>('file')
+const selectedLocalTool = ref<string | null>(null)
 const content = ref('')
 const fileName = ref('')
 const preview = ref<ProfileImportPreview | null>(null)
@@ -35,6 +44,20 @@ const error = ref<string | null>(null)
 const errorCode = ref<string | null>(null)
 const dragging = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+const localRows = computed(() =>
+  LOCAL_TOOL_IDS.map((id) => {
+    const tool = props.tools.find((candidate) => candidate.id === id)
+    return {
+      id,
+      name: tool?.display_name ?? id,
+      path: tool?.config_path ?? '未发现配置文件',
+      available: tool !== undefined && tool.last_modified !== null,
+    }
+  }),
+)
+const selectedLocalName = computed(
+  () => localRows.value.find((row) => row.id === selectedLocalTool.value)?.name ?? '本机配置',
+)
 
 const busy = computed(() => stage.value === 'parsing' || stage.value === 'importing')
 const canConfirm = computed(
@@ -45,23 +68,32 @@ const title = computed(() => {
     return '无法读取导入来源'
   }
   if (stage.value === 'preview' || stage.value === 'importing') {
+    if (preview.value?.source === 'local_config') {
+      return '预览本机配置'
+    }
     return preview.value?.source === 'codex_config' ? '预览 Codex 配置' : '预览导入'
   }
   return '导入供应商'
 })
 const subtitle = computed(() => {
-  if (sourceMode.value === 'codex') {
-    return '直接读取本机 Codex 配置，不会修改原文件'
+  if (sourceMode.value === 'local') {
+    return '从本机配置读取；不读取 OAuth / 环境变量，不修改原文件'
   }
   return fileName.value === '' ? '从本地 JSON / TOML 文件导入，不会自动绑定或启用' : fileName.value
 })
 const errorHint = computed(() => {
+  if (errorCode.value?.startsWith('LOCAL_') === true) {
+    return '检查工具配置文件是否存在、可读且结构正确。'
+  }
   if (errorCode.value?.startsWith('CODEX_') === true) {
     return '检查 CODEX_HOME 或 ~/.codex/config.toml 是否存在、可读，并包含 model_providers。'
   }
   return '检查文件是否带 schema_version = 1，且 profiles 是数组；JSON 与 TOML 都支持。'
 })
 const previewSourceLabel = computed(() => {
+  if (preview.value?.source === 'local_config') {
+    return selectedLocalName.value + ' 配置'
+  }
   if (preview.value?.source === 'codex_config') {
     return 'Codex 配置'
   }
@@ -79,6 +111,10 @@ function switchSource(mode: SourceMode): void {
     return
   }
   sourceMode.value = mode
+  if (mode === 'local') {
+    selectedLocalTool.value =
+      localRows.value.find((row) => row.available)?.id ?? localRows.value[0]?.id ?? null
+  }
   content.value = ''
   fileName.value = ''
   preview.value = null
@@ -128,7 +164,7 @@ async function loadPreview(): Promise<void> {
   error.value = null
   errorCode.value = null
   try {
-    preview.value = await previewProfileImport(content.value)
+    preview.value = await previewProfileImport(content.value, props.currentToolId)
     stage.value = 'preview'
   } catch (caught) {
     preview.value = null
@@ -138,20 +174,20 @@ async function loadPreview(): Promise<void> {
   }
 }
 
-async function readCodexConfig(): Promise<void> {
-  if (busy.value) {
+async function readLocalConfig(): Promise<void> {
+  if (busy.value || selectedLocalTool.value === null) {
     return
   }
-  sourceMode.value = 'codex'
+  sourceMode.value = 'local'
   stage.value = 'parsing'
   error.value = null
   errorCode.value = null
   try {
-    preview.value = await previewCodexConfigImport()
+    preview.value = await previewLocalConfigImport(selectedLocalTool.value)
     stage.value = 'preview'
   } catch (caught) {
     preview.value = null
-    error.value = errorText(caught, '读取 Codex 配置失败')
+    error.value = errorText(caught, '读取本机配置失败')
     errorCode.value = caught instanceof ApiError ? caught.code : null
     stage.value = 'error'
   }
@@ -164,11 +200,20 @@ async function confirm(): Promise<void> {
   stage.value = 'importing'
   error.value = null
   try {
-    const result =
-      preview.value.source === 'codex_config'
-        ? await importCodexProfiles(policy.value)
-        : await importProfiles(content.value, policy.value)
-    emit('imported', result)
+    let result: ProfileImportResult
+    let importedToolId: string | null
+    if (preview.value.source === 'local_config') {
+      if (selectedLocalTool.value === null) {
+        stage.value = 'preview'
+        return
+      }
+      result = await importLocalProfiles(selectedLocalTool.value, policy.value)
+      importedToolId = selectedLocalTool.value
+    } else {
+      importedToolId = props.currentToolId === '' ? null : props.currentToolId
+      result = await importProfiles(content.value, policy.value, importedToolId ?? undefined)
+    }
+    emit('imported', result, importedToolId)
     emit('close')
   } catch (caught) {
     error.value = errorText(caught, '导入失败，请稍后重试')
@@ -178,8 +223,8 @@ async function confirm(): Promise<void> {
 }
 
 function retrySource(): void {
-  if (sourceMode.value === 'codex') {
-    void readCodexConfig()
+  if (sourceMode.value === 'local') {
+    void readLocalConfig()
   } else {
     openPicker()
   }
@@ -226,13 +271,13 @@ function close(): void {
           </button>
           <button
             class="import__source-card"
-            :class="{ 'import__source-card--active': sourceMode === 'codex' }"
+            :class="{ 'import__source-card--active': sourceMode === 'local' }"
             type="button"
             :disabled="busy"
-            @click="switchSource('codex')"
+            @click="switchSource('local')"
           >
             <span class="import__source-icon import__source-icon--codex" aria-hidden="true">&gt;_</span>
-            <span><strong>从 Codex 配置读取</strong><small>CODEX_HOME / ~/.codex</small></span>
+            <span><strong>从本机配置读取</strong><small>Claude / Codex / Gemini / OpenCode</small></span>
           </button>
         </div>
 
@@ -262,24 +307,34 @@ function close(): void {
           />
         </template>
 
-        <div v-else class="import__codex-source">
-          <div class="import__codex-main">
-            <span class="import__codex-icon" aria-hidden="true">&gt;_</span>
-            <div>
-              <strong>读取本机 Codex 配置</strong>
-              <p>读取 <code>CODEX_HOME/config.toml</code> 或 <code>~/.codex/config.toml</code>，只读不修改。</p>
-            </div>
+        <div v-else class="import__local-source">
+          <div class="import__local-list" role="radiogroup" aria-label="本机配置来源">
+            <button
+              v-for="row in localRows"
+              :key="row.id"
+              class="import__local-row"
+              :class="{ 'import__local-row--active': selectedLocalTool === row.id }"
+              type="button"
+              :disabled="busy || !row.available"
+              @click="selectedLocalTool = row.id"
+            >
+              <span class="import__local-name">{{ row.name }}</span>
+              <span class="import__local-path">{{ row.path }}</span>
+              <span class="import__local-status">
+                {{ row.available ? (selectedLocalTool === row.id ? '已选择' : '可读取') : '未发现配置' }}
+              </span>
+            </button>
           </div>
-          <button class="button" type="button" :disabled="busy" @click="readCodexConfig">
-            {{ stage === 'parsing' ? '正在读取…' : '读取 Codex 配置' }}
-          </button>
+          <div class="import__local-actions">
+            <p>只读取配置文件，不读取 OAuth / 环境变量；导入后绑定到来源工具，保持未启用。</p>
+          </div>
         </div>
 
         <ul class="import__hints">
           <li>导入前先预览新增、重复与非法条目。</li>
           <li>重复项默认跳过，可改为覆盖。</li>
-          <li>Codex 的 bearer token 只进本机密钥库，预览只显示「有密钥 / 无密钥」。</li>
-          <li>存在非法条目时整批取消，不会部分写入。</li>
+          <li>本机配置里的密钥只进本机密钥库，预览只显示「有密钥 / 无密钥」。</li>
+          <li>导入后绑定到来源工具，不自动启用；存在非法条目时整批取消。</li>
         </ul>
       </template>
 
@@ -354,7 +409,7 @@ function close(): void {
           <template v-if="stage === 'error'">
             <button class="button button--secondary" type="button" @click="close">取消</button>
             <button class="button" type="button" @click="retrySource">
-              {{ sourceMode === 'codex' ? '重新读取' : '重新选择' }}
+              {{ sourceMode === 'local' ? '重新读取' : '重新选择' }}
             </button>
           </template>
           <template v-else-if="stage === 'preview'">
@@ -368,8 +423,8 @@ function close(): void {
             <button v-if="sourceMode === 'file'" class="button" type="button" :disabled="busy" @click="openPicker">
               {{ stage === 'parsing' ? '解析中…' : '选择文件' }}
             </button>
-            <button v-else class="button" type="button" :disabled="busy" @click="readCodexConfig">
-              {{ stage === 'parsing' ? '读取中…' : '读取 Codex 配置' }}
+            <button v-else class="button" type="button" :disabled="busy || selectedLocalTool === null" @click="readLocalConfig">
+              {{ stage === 'parsing' ? '读取中…' : '读取所选配置' }}
             </button>
           </template>
         </div>
@@ -741,6 +796,81 @@ function close(): void {
   font-size: 11px;
 }
 
+.import__local-source {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.import__local-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.import__local-row {
+  display: grid;
+  grid-template-columns: minmax(96px, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-card);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.import__local-row--active {
+  border-color: var(--color-border-selected);
+  background: var(--color-bg-selected);
+}
+
+.import__local-row:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.import__local-name {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.import__local-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import__local-status {
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.import__local-row--active .import__local-status {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.import__local-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.import__local-actions p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-relaxed);
+}
+
 .import__codex-source {
   display: flex;
   align-items: center;
@@ -865,7 +995,82 @@ function close(): void {
     grid-template-columns: 1fr;
   }
 
-  .import__codex-source {
+  .import__local-source {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.import__local-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.import__local-row {
+  display: grid;
+  grid-template-columns: minmax(96px, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-card);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.import__local-row--active {
+  border-color: var(--color-border-selected);
+  background: var(--color-bg-selected);
+}
+
+.import__local-row:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.import__local-name {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.import__local-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import__local-status {
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.import__local-row--active .import__local-status {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.import__local-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.import__local-actions p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-relaxed);
+}
+
+.import__codex-source {
     align-items: flex-start;
     flex-direction: column;
   }

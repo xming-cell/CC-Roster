@@ -30,6 +30,7 @@ from app.schemas.profile import (
 )
 from app.schemas.profile_import import (
     CodexProfileImportRequest,
+    LocalProfileImportRequest,
     ProfileImportPreview,
     ProfileImportRequest,
     ProfileImportResult,
@@ -121,6 +122,33 @@ def import_profiles(
     service: ProfileImportServiceDep,
 ) -> ProfileImportResult:
     return service.import_profiles(payload)
+
+
+@router.post(
+    "/api/profiles/import/local/{tool_id}/preview",
+    response_model=ProfileImportPreview,
+)
+def preview_local_profile_import(
+    tool_id: str,
+    service: ProfileImportServiceDep,
+) -> ProfileImportPreview:
+    return service.preview_local(_normalize_required_id(tool_id, "tool_id"))
+
+
+@router.post(
+    "/api/profiles/import/local/{tool_id}",
+    response_model=ProfileImportResult,
+    status_code=201,
+)
+def import_local_profiles(
+    tool_id: str,
+    payload: LocalProfileImportRequest,
+    service: ProfileImportServiceDep,
+) -> ProfileImportResult:
+    return service.import_local(
+        _normalize_required_id(tool_id, "tool_id"),
+        payload.policy,
+    )
 
 
 @router.get("/api/profiles/{profile_id}", response_model=ProfileView)

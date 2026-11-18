@@ -507,3 +507,19 @@
 - 不支持 resume 的工具不显示输入框，显示只读说明。
 
 **后果**：卡片 038 负责重出输入框式设计；旧的 `19-resume-history.png` / `20-resume-success.png` 按钮式画板作废。107 的只读默认不变。
+
+---
+
+## ADR-018 本机供应商配置导入覆盖全部工具（修订 ADR-015）
+
+**状态**：已接受（2026-11-18，用户确认方案 A）
+
+**决策**：
+
+- 本机配置导入不再只支持 Codex；覆盖 Claude Code / Codex CLI / Gemini CLI / OpenCode，后端按 `tool_id` 走通用预览 / 导入入口。
+- 本机配置导入绑定到来源工具；JSON / TOML 文件导入绑定到当前选中的工具。导入后自动切到对应工具，新增 / 覆盖项立即可见，状态 `active=false`。
+- 只读取工具配置文件里明确写出的非 OAuth 字段；不读取进程环境变量、OAuth 凭据或系统钥匙串。
+- Claude 无 `base_url` 时使用 Anthropic 官方默认地址；Gemini / OpenCode 缺少 base URL 时给出可读错误。
+- Cursor 本期不做；后续按需扩展。
+
+**后果**：卡片 039 / `specs/113-local-config-import` 负责；修正 ADR-015「不导入 Claude / Gemini / OpenCode」的临时划界。
