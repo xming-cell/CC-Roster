@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 
@@ -14,8 +14,24 @@ function jsonResponse(body: unknown, status = 200): Response {
   } as unknown as Response
 }
 
-async function mountApp() {
-  await router.push('/')
+const defaultSettings = {
+  read_only: false,
+  hotkey: 'ctrl+alt+c',
+  autostart: false,
+  updated_at: '2026-11-17T10:00:00+00:00',
+  message: '可写模式',
+  capabilities: { tray: true, hotkey: true, autostart: true },
+}
+
+const emptyProfiles = {
+  profiles: [],
+  bindings: [],
+  secret_store: { backend: 'keyring', fallback: false, message: null },
+  warnings: [],
+}
+
+async function mountApp(path = '/') {
+  await router.push(path)
   await router.isReady()
   const wrapper = mount(App, {
     global: { plugins: [createPinia(), router] },
@@ -25,99 +41,64 @@ async function mountApp() {
 }
 
 describe('App', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((path: string) => {
+        if (path === '/api/profiles') {
+          return Promise.resolve(jsonResponse(emptyProfiles))
+        }
+        if (path === '/api/settings') {
+          return Promise.resolve(jsonResponse(defaultSettings))
+        }
+        return Promise.resolve(jsonResponse({ tools: [], warnings: [] }))
+      }),
+    )
+  })
+
   afterEach(() => {
     vi.unstubAllGlobals()
   })
 
-  it('renders the home route with the friend list shell', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((path: string) =>
-        Promise.resolve(
-          jsonResponse(
-            path === '/api/profiles'
-              ? {
-                  profiles: [],
-                  bindings: [],
-                  secret_store: { backend: 'keyring', fallback: false, message: null },
-                  warnings: [],
-                }
-              : path === '/api/appearances'
-                ? { schema_version: 1, appearances: {} }
-                : { tools: [], warnings: [] },
-          ),
-        ),
-      ),
-    )
+  it('opens the workbench at / and marks it current while keeping the provider entry available', async () => {
+    const wrapper = await mountApp('/')
 
-    const wrapper = await mountApp()
+    const nav = getByRole(wrapper, 'navigation')
+    expect(nav.findAll('a')).toHaveLength(5)
 
-    expect(getByRole(wrapper, 'heading', { name: 'AI 伙伴' })).toBeTruthy()
-    expect(getByText(wrapper, '还没有发现任何 AI 工具')).toBeTruthy()
+    const workbench = getByRole(nav, 'link', { name: '工作台' })
+    const providers = getByRole(nav, 'link', { name: '供应商' })
+    const audit = getByRole(nav, 'link', { name: '操作记录' })
+    const usage = getByRole(nav, 'link', { name: '用量' })
+    const settings = getByRole(nav, 'link', { name: '设置' })
+    expect(workbench.attributes('href')).toBe('/')
+    expect(workbench.attributes('aria-current')).toBe('page')
+    expect(providers.attributes('href')).toBe('/providers')
+    expect(audit.attributes('href')).toBe('/audit')
+    expect(usage.attributes('href')).toBe('/usage')
+    expect(settings.attributes('href')).toBe('/settings')
+    expect(providers.attributes('aria-current')).toBeUndefined()
+
+    expect(getByText(wrapper, '尚未发现已安装的 AI 工具')).toBeTruthy()
   })
 
-  it('shows a readable error when the tools API is unreachable', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+  it('opens the provider page at /providers and marks its navigation entry current', async () => {
+    const wrapper = await mountApp('/providers')
 
-    const wrapper = await mountApp()
+    const nav = getByRole(wrapper, 'navigation')
+    const workbench = getByRole(nav, 'link', { name: '工作台' })
+    const providers = getByRole(nav, 'link', { name: '供应商' })
 
-    expect(getByRole(wrapper, 'alert').text()).toContain('无法连接后端服务')
+    expect(providers.attributes('aria-current')).toBe('page')
+    expect(workbench.attributes('aria-current')).toBeUndefined()
+    expect(getByText(wrapper, '选择一个工具')).toBeTruthy()
+    expect(getByText(wrapper, '按工具管理供应商与绑定关系')).toBeTruthy()
   })
 
-  it('links to the profiles route and renders the profiles view', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((path: string) =>
-        Promise.resolve(
-          jsonResponse(
-            path === '/api/profiles'
-              ? {
-                  profiles: [],
-                  bindings: [],
-                  secret_store: { backend: 'keyring', fallback: false, message: null },
-                  warnings: [],
-                }
-              : path === '/api/appearances'
-                ? { schema_version: 1, appearances: {} }
-                : { tools: [], warnings: [] },
-          ),
-        ),
-      ),
-    )
-    const wrapper = await mountApp()
+  it('redirects the legacy /tools entry to the same workbench', async () => {
+    const wrapper = await mountApp('/tools')
 
-    const link = getByRole(wrapper, 'link', { name: '档案' })
-    expect(link.attributes('href')).toBe('/profiles')
-
-    await router.push('/profiles')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('还没有档案')
-  })
-
-  it('links to the tools route and renders the tools view', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((path: string) =>
-        Promise.resolve(
-          jsonResponse(
-            path === '/api/tools'
-              ? { tools: [], warnings: [] }
-              : path === '/api/appearances'
-                ? { schema_version: 1, appearances: {} }
-                : { status: 'ok' },
-          ),
-        ),
-      ),
-    )
-    const wrapper = await mountApp()
-
-    const link = getByRole(wrapper, 'link', { name: '工具' })
-    expect(link.attributes('href')).toBe('/tools')
-
-    await router.push('/tools')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('未发现已安装的 AI 工具')
+    expect(router.currentRoute.value.path).toBe('/')
+    expect(getByText(wrapper, '尚未发现已安装的 AI 工具')).toBeTruthy()
   })
 })

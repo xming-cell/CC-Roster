@@ -4,6 +4,17 @@ export type ProfileProtocol = 'anthropic' | 'openai'
 export type SecretBackend = 'keyring' | 'file'
 export type SecretStoreBackend = SecretBackend | 'unavailable'
 export type ProfileWarningCode = 'SECRET_MISSING' | 'SECRET_STORE_ERROR'
+export type HealthCheckStatus =
+  | 'CONNECTED'
+  | 'INVALID_CREDENTIALS'
+  | 'INVALID_ADDRESS'
+  | 'MODEL_NOT_FOUND'
+  | 'TIMEOUT'
+  | 'RATE_LIMITED'
+  | 'SECRET_MISSING'
+  | 'SECRET_STORE_ERROR'
+  | 'MODEL_REQUIRED'
+  | 'UNKNOWN'
 
 export interface ModelEntry {
   id: string
@@ -19,12 +30,6 @@ export interface ToolRef {
 export interface ProfileWarning {
   code: ProfileWarningCode
   message: string
-}
-
-export interface SecretStoreStatus {
-  backend: SecretStoreBackend
-  fallback: boolean
-  message: string | null
 }
 
 export interface ProfileView {
@@ -51,6 +56,12 @@ export interface BindingView {
   snapshot_id: string | null
 }
 
+export interface SecretStoreStatus {
+  backend: SecretStoreBackend
+  fallback: boolean
+  message: string | null
+}
+
 export interface ProfileListResponse {
   profiles: ProfileView[]
   bindings: BindingView[]
@@ -63,7 +74,7 @@ export interface ProfileCreateInput {
   protocol: ProfileProtocol
   base_url: string
   models: ModelEntry[]
-  secret?: string | null
+  secret: string | null
 }
 
 export interface ProfileUpdateInput {
@@ -74,9 +85,8 @@ export interface ProfileUpdateInput {
   secret?: string | null
 }
 
-export interface ProfileDeleteResponse {
-  deleted: boolean
-  unbound_tools: ToolRef[]
+export interface ProfileCopyInput {
+  name?: string
 }
 
 export interface BindingDeleteResponse {
@@ -84,10 +94,22 @@ export interface BindingDeleteResponse {
   removed: boolean
 }
 
-function jsonInit(method: string, body?: unknown): RequestInit {
-  if (body === undefined) {
-    return { method }
-  }
+export interface ProfileDeleteResponse {
+  deleted: boolean
+  unbound_tools: ToolRef[]
+}
+
+export interface HealthCheckResponse {
+  profile_id: string
+  model: string | null
+  status: HealthCheckStatus
+  attempted: boolean
+  duration_ms: number | null
+  message: string
+  checked_at: string
+}
+
+function jsonInit(method: string, body: unknown): RequestInit {
   return {
     method,
     headers: { 'Content-Type': 'application/json' },
@@ -95,33 +117,32 @@ function jsonInit(method: string, body?: unknown): RequestInit {
   }
 }
 
-export function listProfiles(): Promise<ProfileListResponse> {
-  return requestJson<ProfileListResponse>('/api/profiles')
+export function listProfiles(toolId?: string): Promise<ProfileListResponse> {
+  const query = toolId === undefined ? '' : `?tool_id=${encodeURIComponent(toolId)}`
+  return requestJson<ProfileListResponse>(`/api/profiles${query}`)
 }
 
-export function getProfile(profileId: string): Promise<ProfileView> {
-  return requestJson<ProfileView>(`/api/profiles/${encodeURIComponent(profileId)}`)
-}
-
-export function createProfile(input: ProfileCreateInput): Promise<ProfileView> {
-  return requestJson<ProfileView>('/api/profiles', jsonInit('POST', input))
+export function createProfile(payload: ProfileCreateInput): Promise<ProfileView> {
+  return requestJson<ProfileView>('/api/profiles', jsonInit('POST', payload))
 }
 
 export function updateProfile(
   profileId: string,
-  input: ProfileUpdateInput,
+  payload: ProfileUpdateInput,
 ): Promise<ProfileView> {
   return requestJson<ProfileView>(
     `/api/profiles/${encodeURIComponent(profileId)}`,
-    jsonInit('PATCH', input),
+    jsonInit('PATCH', payload),
   )
 }
 
-export function copyProfile(profileId: string, name?: string): Promise<ProfileView> {
-  const body = name === undefined ? undefined : { name }
+export function copyProfile(
+  profileId: string,
+  payload: ProfileCopyInput = {},
+): Promise<ProfileView> {
   return requestJson<ProfileView>(
     `/api/profiles/${encodeURIComponent(profileId)}/copy`,
-    jsonInit('POST', body),
+    jsonInit('POST', payload),
   )
 }
 
@@ -136,19 +157,30 @@ export function deleteProfile(
   )
 }
 
-export function bindToolProfile(
-  toolId: string,
-  profileId: string,
-): Promise<BindingView> {
+export function bindProfile(toolId: string, profileId: string): Promise<BindingView> {
   return requestJson<BindingView>(
     `/api/tools/${encodeURIComponent(toolId)}/profile`,
     jsonInit('PUT', { profile_id: profileId }),
   )
 }
 
-export function unbindToolProfile(toolId: string): Promise<BindingDeleteResponse> {
+export function unbindProfile(
+  toolId: string,
+  profileId: string,
+): Promise<BindingDeleteResponse> {
   return requestJson<BindingDeleteResponse>(
-    `/api/tools/${encodeURIComponent(toolId)}/profile`,
+    `/api/tools/${encodeURIComponent(toolId)}/profiles/${encodeURIComponent(profileId)}`,
     { method: 'DELETE' },
+  )
+}
+
+export function healthCheckProfile(
+  profileId: string,
+  model?: string,
+): Promise<HealthCheckResponse> {
+  const payload = model === undefined ? {} : { model }
+  return requestJson<HealthCheckResponse>(
+    `/api/profiles/${encodeURIComponent(profileId)}/health-check`,
+    jsonInit('POST', payload),
   )
 }

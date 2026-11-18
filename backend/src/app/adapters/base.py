@@ -8,15 +8,19 @@
 from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.adapters.usage import UsageScan
 from app.core.format_edits import DocumentFormat, FieldEdit
 from app.core.paths import validate_absolute_path
 from app.core.redaction import redact_text
 from app.schemas.profile import Profile, ProfileProtocol
 from app.schemas.snapshot import SnapshotChange
+
+if TYPE_CHECKING:
+    from app.schemas.session import SessionMessage, SessionSummary
 
 # 稳定契约: 新增类型必须先扩展这里, 不允许适配器自造 code。
 WarningCode = Literal[
@@ -57,6 +61,9 @@ class ToolCapabilities(BaseModel):
     sessions: bool = False
     launch: bool = False
     write_mode: Literal["none", "managed_fields"] = "none"
+    reasoning_effort: bool = False
+    reasoning_effort_levels: list[str] = Field(default_factory=list)
+    resume: bool = False
 
 
 class ToolDetection(BaseModel):
@@ -100,6 +107,7 @@ WriteBlockerCode = Literal[
 
 WriteWarningCode = Literal[
     "PROFILE_SECRET_EMPTY",
+    "SECRET_ENV_ONLY",
     "NO_MODELS",
     "MODEL_SHADOWED",
     "OAUTH_AUTH_PRESENT",
@@ -216,6 +224,14 @@ class ToolAdapter(Protocol):
     def detect(self) -> ToolDetection: ...
 
     def read(self) -> ToolReadResult: ...
+
+    def list_sessions(self) -> list["SessionSummary"]: ...
+
+    def read_session_messages(
+        self, session_id: str, *, offset: int, limit: int
+    ) -> tuple[list["SessionMessage"], bool, list[ToolWarning]]: ...
+
+    def usage_scan(self) -> UsageScan: ...
 
     def plan(
         self,

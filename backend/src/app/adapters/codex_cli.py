@@ -13,6 +13,7 @@ from pathlib import Path
 
 from app.adapters.base import (
     ToolBlocker,
+    ToolCapabilities,
     ToolCurrentFile,
     ToolDetection,
     ToolPlan,
@@ -42,9 +43,12 @@ from app.adapters.managed_fields import (
     parse_json_object,
     parse_toml_table,
 )
+from app.adapters.sessions import CodexSessionSource
+from app.adapters.usage import CodexUsageSource, UsageScan
 from app.core.errors import AppError
 from app.core.redaction import redact_secret, redact_text
 from app.schemas.profile import Profile, ProfileProtocol
+from app.schemas.session import SessionMessage, SessionSummary
 
 _ID = "codex-cli"
 _DISPLAY_NAME = "Codex CLI"
@@ -90,12 +94,23 @@ class CodexCliAdapter(ManagedFieldsAdapter):
     id = _ID
     display_name = _DISPLAY_NAME
     supported_protocols: tuple[ProfileProtocol, ...] = ("openai",)
+    capabilities = ToolCapabilities(
+        write=True,
+        sessions=True,
+        launch=True,
+        write_mode="managed_fields",
+        reasoning_effort=True,
+        reasoning_effort_levels=["low", "medium", "high"],
+        resume=True,
+    )
 
     def __init__(self, config_dir: Path, *, which: WhichFn | None = None) -> None:
         self._config_dir = config_dir
         self._config_file = config_dir / _CONFIG_FILE_NAME
         self._auth_file = config_dir / _AUTH_FILE_NAME
         self._which = shutil.which if which is None else which
+        self._sessions = CodexSessionSource(config_dir)
+        self._usage = CodexUsageSource(config_dir)
 
     @property
     def managed_paths(self) -> tuple[Path, ...]:
@@ -112,6 +127,17 @@ class CodexCliAdapter(ManagedFieldsAdapter):
             ),
             warnings=warnings,
         )
+
+    def usage_scan(self) -> UsageScan:
+        return self._usage.scan()
+
+    def list_sessions(self) -> list[SessionSummary]:
+        return list(self._sessions.list_summaries()[0])
+
+    def read_session_messages(
+        self, session_id: str, *, offset: int, limit: int
+    ) -> tuple[list[SessionMessage], bool, list[ToolWarning]]:
+        return self._sessions.read_messages(session_id, offset=offset, limit=limit)
 
     def read(self) -> ToolReadResult:
         config, warnings = self._load()

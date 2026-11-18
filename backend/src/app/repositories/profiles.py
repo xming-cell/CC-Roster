@@ -63,8 +63,11 @@ class ProfileRepository:
     def list_profiles(self) -> list[Profile]:
         return list(self._read().profiles)
 
-    def list_bindings(self) -> list[ToolBinding]:
-        return list(self._read().bindings)
+    def list_bindings(self, tool_id: str | None = None) -> list[ToolBinding]:
+        bindings = self._read().bindings
+        if tool_id is None:
+            return list(bindings)
+        return [binding for binding in bindings if binding.tool_id == tool_id]
 
     def get_profile(self, profile_id: str) -> Profile | None:
         """找不到时返回 None, 由 service 决定对应的业务错误。"""
@@ -73,9 +76,13 @@ class ProfileRepository:
             None,
         )
 
-    def get_binding(self, tool_id: str) -> ToolBinding | None:
+    def get_binding(self, tool_id: str, profile_id: str) -> ToolBinding | None:
         return next(
-            (binding for binding in self._read().bindings if binding.tool_id == tool_id),
+            (
+                binding
+                for binding in self._read().bindings
+                if binding.tool_id == tool_id and binding.profile_id == profile_id
+            ),
             None,
         )
 
@@ -88,7 +95,14 @@ class ProfileRepository:
             with FileLock(self._lock_path, timeout=self._lock_timeout):
                 store = self._read()
                 result = change(store)
-                validated = ProfileStore.model_validate(store.model_dump(mode="python"))
+                try:
+                    validated = ProfileStore.model_validate(store.model_dump(mode="python"))
+                except ValidationError as exc:
+                    raise AppError(
+                        "PROFILE_STORE_INVALID",
+                        f"档案库变更不符合完整性约束, 原文件未修改: {self._path}",
+                        500,
+                    ) from exc
                 self._write(validated)
                 return result
         except LockTimeoutError as exc:

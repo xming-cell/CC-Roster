@@ -7,11 +7,13 @@
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.adapters.registry import build_registry
 from app.core.config import settings
+from app.core.errors import AppError
 from app.core.paths import resolve_data_dir
+from app.repositories.audit import AuditRepository
 from app.repositories.profiles import ProfileRepository
 from app.repositories.secrets import build_secret_store
 from app.schemas.health_check import HealthCheckRequest, HealthCheckResponse
@@ -26,7 +28,15 @@ from app.schemas.profile import (
     ProfileUpdate,
     ProfileView,
 )
+from app.schemas.profile_import import (
+    CodexProfileImportRequest,
+    LocalProfileImportRequest,
+    ProfileImportPreview,
+    ProfileImportRequest,
+    ProfileImportResult,
+)
 from app.services.health_check import HealthCheckService, UrllibHealthCheckTransport
+from app.services.profile_import_service import ProfileImportService
 from app.services.profile_service import ProfileService
 from app.services.tool_discovery import ToolDiscoveryService
 
@@ -40,6 +50,7 @@ def get_profile_service() -> ProfileService:
         ProfileRepository(data_dir),
         build_secret_store(data_dir, mode=settings.secret_backend),
         ToolDiscoveryService(build_registry()),
+        AuditRepository(data_dir / "db" / "app.sqlite3"),
     )
 
 
@@ -53,17 +64,91 @@ def get_health_check_service() -> HealthCheckService:
 
 
 ProfileServiceDep = Annotated[ProfileService, Depends(get_profile_service)]
+
+
+def get_profile_import_service() -> ProfileImportService:
+    """导入按当前数据目录与环境构造, 与 CRUD 服务共享同一份存储。"""
+    data_dir = Path(resolve_data_dir())
+    return ProfileImportService(
+        ProfileRepository(data_dir),
+        build_secret_store(data_dir, mode=settings.secret_backend),
+        AuditRepository(data_dir / "db" / "app.sqlite3"),
+    )
+
+
+ProfileImportServiceDep = Annotated[ProfileImportService, Depends(get_profile_import_service)]
 HealthCheckServiceDep = Annotated[HealthCheckService, Depends(get_health_check_service)]
 
 
 @router.get("/api/profiles", response_model=ProfileListResponse)
-def list_profiles(service: ProfileServiceDep) -> ProfileListResponse:
-    return service.list_profiles()
+def list_profiles(
+    service: ProfileServiceDep,
+    tool_id: Annotated[str | None, Query()] = None,
+) -> ProfileListResponse:
+    return service.list_profiles(tool_id=_normalize_optional_id(tool_id, "tool_id"))
 
 
 @router.post("/api/profiles", response_model=ProfileView, status_code=201)
 def create_profile(payload: ProfileCreate, service: ProfileServiceDep) -> ProfileView:
     return service.create_profile(payload)
+
+
+@router.post("/api/profiles/import/preview", response_model=ProfileImportPreview)
+def preview_profile_import(
+    payload: ProfileImportRequest,
+    service: ProfileImportServiceDep,
+) -> ProfileImportPreview:
+    return service.preview(payload)
+
+
+@router.post("/api/profiles/import/codex/preview", response_model=ProfileImportPreview)
+def preview_codex_profile_import(
+    service: ProfileImportServiceDep,
+) -> ProfileImportPreview:
+    return service.preview_codex()
+
+
+@router.post("/api/profiles/import/codex", response_model=ProfileImportResult, status_code=201)
+def import_codex_profiles(
+    payload: CodexProfileImportRequest,
+    service: ProfileImportServiceDep,
+) -> ProfileImportResult:
+    return service.import_codex(payload.policy)
+
+
+@router.post("/api/profiles/import", response_model=ProfileImportResult, status_code=201)
+def import_profiles(
+    payload: ProfileImportRequest,
+    service: ProfileImportServiceDep,
+) -> ProfileImportResult:
+    return service.import_profiles(payload)
+
+
+@router.post(
+    "/api/profiles/import/local/{tool_id}/preview",
+    response_model=ProfileImportPreview,
+)
+def preview_local_profile_import(
+    tool_id: str,
+    service: ProfileImportServiceDep,
+) -> ProfileImportPreview:
+    return service.preview_local(_normalize_required_id(tool_id, "tool_id"))
+
+
+@router.post(
+    "/api/profiles/import/local/{tool_id}",
+    response_model=ProfileImportResult,
+    status_code=201,
+)
+def import_local_profiles(
+    tool_id: str,
+    payload: LocalProfileImportRequest,
+    service: ProfileImportServiceDep,
+) -> ProfileImportResult:
+    return service.import_local(
+        _normalize_required_id(tool_id, "tool_id"),
+        payload.policy,
+    )
 
 
 @router.get("/api/profiles/{profile_id}", response_model=ProfileView)
@@ -111,8 +196,22 @@ def bind_tool_profile(
 def unbind_tool_profile(
     tool_id: str,
     service: ProfileServiceDep,
+    profile_id: Annotated[str, Query()],
 ) -> BindingDeleteResponse:
-    return service.unbind_tool(tool_id)
+    """兼容入口; 必须指定 `profile_id`, 不会清空该工具的全部绑定。"""
+    return service.unbind_tool(tool_id, _normalize_required_id(profile_id, "profile_id"))
+
+
+@router.delete(
+    "/api/tools/{tool_id}/profiles/{profile_id}",
+    response_model=BindingDeleteResponse,
+)
+def unbind_tool_profile_by_id(
+    tool_id: str,
+    profile_id: str,
+    service: ProfileServiceDep,
+) -> BindingDeleteResponse:
+    return service.unbind_tool(tool_id, _normalize_required_id(profile_id, "profile_id"))
 
 
 @router.post(
@@ -125,3 +224,16 @@ def health_check_profile(
     payload: HealthCheckRequest | None = None,
 ) -> HealthCheckResponse:
     return service.check(profile_id, payload or HealthCheckRequest())
+
+
+def _normalize_required_id(value: str, field: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise AppError("VALIDATION_ERROR", f"{field} 不能为空", 422)
+    return normalized
+
+
+def _normalize_optional_id(value: str | None, field: str) -> str | None:
+    if value is None:
+        return None
+    return _normalize_required_id(value, field)

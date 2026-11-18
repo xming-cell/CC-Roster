@@ -37,7 +37,9 @@ MISSING: object = object()
 class ManagedFieldsAdapter:
     """两个工具共用的写能力基线; 子类只需实现 `plan` 与只读契约。"""
 
-    capabilities = ToolCapabilities(write=True, write_mode="managed_fields")
+    capabilities = ToolCapabilities(
+        write=True, sessions=True, launch=True, write_mode="managed_fields"
+    )
     supported_protocols: tuple[ProfileProtocol, ...] = ()
 
     def render(self, plan_file: ToolPlanFile, original_bytes: bytes) -> bytes:

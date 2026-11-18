@@ -2,6 +2,7 @@
 
 import json
 import threading
+import time
 import urllib.error
 from collections.abc import Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -234,6 +235,7 @@ def test_unknown_profile_and_repeated_checks_have_expected_side_effects(
     )
     profiles_before = (tmp_path / "profiles.json").read_bytes()
     secrets_before = dict(harness.keyring.values)
+    files_before = sorted(path.name for path in tmp_path.iterdir())
 
     missing = harness.client.post(
         "/api/profiles/00000000-0000-4000-8000-000000000000/health-check",
@@ -248,10 +250,7 @@ def test_unknown_profile_and_repeated_checks_have_expected_side_effects(
     assert len(transport.calls) == 2
     assert (tmp_path / "profiles.json").read_bytes() == profiles_before
     assert harness.keyring.values == secrets_before
-    assert sorted(path.name for path in tmp_path.iterdir()) == [
-        "profiles.json",
-        "profiles.lock",
-    ]
+    assert sorted(path.name for path in tmp_path.iterdir()) == files_before
 
 
 def test_standard_transport_does_not_follow_redirects() -> None:
@@ -262,7 +261,11 @@ def test_standard_transport_does_not_follow_redirects() -> None:
             requests.append(self.path)
             self.send_response(302)
             self.send_header("Location", "/elsewhere")
+            self.send_header("Content-Length", "0")
+            self.send_header("Connection", "close")
             self.end_headers()
+            self.wfile.flush()
+            time.sleep(0.05)
 
         def log_message(self, _format: str, *args: object) -> None:
             return

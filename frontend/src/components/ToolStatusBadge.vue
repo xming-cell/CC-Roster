@@ -14,7 +14,7 @@ const labels: Record<BadgeStatus, string> = {
   error: '异常',
 }
 
-const label = computed(() => labels[props.status] ?? '异常')
+const label = computed(() => labels[props.status])
 </script>
 
 <template>
@@ -23,31 +23,34 @@ const label = computed(() => labels[props.status] ?? '异常')
 
 <style scoped>
 .status-badge {
-  display: inline-block;
-  border-radius: var(--radius-full);
-  padding: 0.125rem var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 7px;
+  border-radius: 999px;
   font-size: var(--font-size-xs);
-  line-height: var(--line-height-base);
+  font-weight: 600;
+  line-height: 1.2;
   white-space: nowrap;
 }
 
 .status-badge--loading {
-  background: var(--status-loading-bg);
-  color: var(--status-loading-fg);
+  background: var(--color-bg-subtle);
+  color: var(--color-text-secondary);
 }
 
 .status-badge--ok {
-  background: var(--status-ok-bg);
-  color: var(--status-ok-fg);
+  background: var(--color-success-bg);
+  color: var(--color-success-fg);
 }
 
 .status-badge--unconfigured {
-  background: var(--status-unconfigured-bg);
-  color: var(--status-unconfigured-fg);
+  background: var(--color-warning-bg);
+  color: var(--color-warning-fg);
 }
 
 .status-badge--error {
-  background: var(--status-error-bg);
-  color: var(--status-error-fg);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-fg);
 }
 </style>

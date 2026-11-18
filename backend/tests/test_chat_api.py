@@ -1,0 +1,608 @@
+"""014 应用内对话: 上下文、SSE、错误与中断测试。"""
+
+import json
+from collections.abc import Iterator, Mapping, Sequence
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from fastapi.testclient import TestClient
+from profile_fixtures import make_profile
+
+from app.adapters.base import ToolCapabilities
+from app.adapters.claude_code import ClaudeCodeAdapter
+from app.adapters.codex_cli import CodexCliAdapter
+from app.adapters.registry import ToolRegistry
+from app.api.chat import get_chat_service
+from app.main import create_app
+from app.repositories.chat import ChatRepository
+from app.repositories.profiles import ProfileRepository
+from app.repositories.secrets import build_secret_store
+from app.schemas.chat import ChatStore
+from app.schemas.profile import ModelEntry
+from app.services.chat import ChatService
+from app.services.chat_executor import RawChatEvent, parse_json_event, parse_output_line
+from app.services.launcher import LaunchService
+
+SECRET = "sk-ant-chat-secret-1234567890"
+PROFILE_ID = "11111111-1111-4111-8111-111111111111"
+
+
+class FakeSpawner:
+    def spawn(self, command: Sequence[str], cwd: Path, env: Mapping[str, str]) -> int:
+        return 1
+
+
+class FakeExecutor:
+    def __init__(self, events: list[RawChatEvent] | None = None) -> None:
+        self.events = events or []
+        self.calls: list[tuple[list[str], Path, dict[str, str]]] = []
+        self.cancelled = False
+        self.cancel_result = False
+        self.cancel_on_first = False
+        self.raise_error: Exception | None = None
+
+    def stream(
+        self,
+        *,
+        session_id: str,
+        command: Sequence[str],
+        cwd: Path,
+        env: Mapping[str, str],
+    ) -> Iterator[RawChatEvent]:
+        self.calls.append((list(command), cwd, dict(env)))
+        if self.raise_error is not None:
+            raise self.raise_error
+        for index, event in enumerate(self.events):
+            yield event
+            if self.cancel_on_first and index == 0:
+                self.cancelled = True
+                return
+
+    def cancel(self, session_id: str) -> bool:
+        self.cancelled = True
+        return self.cancel_result
+
+    def was_cancelled(self, session_id: str) -> bool:
+        return self.cancelled
+
+
+def harness(tmp_path: Path, executor: FakeExecutor | None = None):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    repository = ProfileRepository(data_dir)
+    secrets = build_secret_store(data_dir, mode="file")
+    ref = secrets.put(PROFILE_ID, SECRET)
+    repository.mutate(
+        lambda store: store.profiles.append(
+            make_profile(
+                profile_id=PROFILE_ID,
+                secret_ref=ref,
+                models=[{"id": "claude-sonnet-4"}],
+            )
+        )
+    )
+    registry = ToolRegistry(
+        [
+            ClaudeCodeAdapter(tmp_path / "claude", which=lambda _name: None),
+            CodexCliAdapter(tmp_path / "codex", which=lambda _name: None),
+        ]
+    )
+    launcher = LaunchService(
+        registry,
+        repository,
+        secrets,
+        which=lambda name: f"/usr/bin/{name}",
+        spawner=FakeSpawner(),
+        platform="win32",
+    )
+    fake = executor or FakeExecutor(
+        [
+            RawChatEvent(type="status", message="思考中"),
+            RawChatEvent(type="token", content="你好"),
+            RawChatEvent(type="tool", tool_name="Bash", content="ls"),
+            RawChatEvent(type="token", content="完成"),
+        ]
+    )
+    chat_repository = ChatRepository(data_dir)
+    service = ChatService(chat_repository, launcher, fake)
+    app = create_app()
+    app.dependency_overrides[get_chat_service] = lambda: service
+    project = tmp_path / "project"
+    project.mkdir()
+    return TestClient(app), service, fake, project, chat_repository
+
+
+def create_session(client: TestClient, project: Path) -> dict[str, object]:
+    response = client.post(
+        "/api/chat/sessions",
+        json={
+            "tool_id": "claude-code",
+            "profile_id": PROFILE_ID,
+            "project_dir": str(project),
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def sse_events(text: str) -> list[dict[str, object]]:
+    return [
+        json.loads(line.removeprefix("data: "))
+        for line in text.splitlines()
+        if line.startswith("data: ")
+    ]
+
+
+def test_create_list_get_and_persist_context(tmp_path: Path) -> None:
+    client, _service, _fake, project, repository = harness(tmp_path)
+
+    created = create_session(client, project)
+    listed = client.get("/api/chat/sessions")
+    fetched = client.get(f"/api/chat/sessions/{created['id']}")
+
+    assert created["tool_id"] == "claude-code"
+    assert created["status"] == "idle"
+    assert listed.status_code == 200
+    assert [item["id"] for item in listed.json()["sessions"]] == [created["id"]]
+    assert fetched.json()["project_dir"] == str(project)
+    assert repository.path.exists()
+    assert SECRET not in repository.path.read_text(encoding="utf-8")
+
+
+def test_stream_maps_tokens_tools_and_done(tmp_path: Path) -> None:
+    client, _service, fake, project, _repository = harness(tmp_path)
+    session = create_session(client, project)
+
+    response = client.post(
+        f"/api/chat/sessions/{session['id']}/messages",
+        json={"content": "帮我改一个文件"},
+    )
+
+    assert response.status_code == 200
+    events = sse_events(response.text)
+    assert [event["type"] for event in events] == [
+        "status",
+        "status",
+        "token",
+        "tool",
+        "token",
+        "done",
+    ]
+    assert events[2]["content"] == "你好"
+    assert events[3]["tool_name"] == "Bash"
+    assert len(fake.calls) == 1
+    command, cwd, env = fake.calls[0]
+    assert command == [
+        "/usr/bin/claude",
+        "-p",
+        "帮我改一个文件",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+    ]
+    assert cwd == project
+    assert env["ANTHROPIC_MODEL"] == "claude-sonnet-4"
+
+    stored = client.get(f"/api/chat/sessions/{session['id']}").json()
+    assert [message["role"] for message in stored["messages"]] == ["user", "tool", "assistant"]
+    assert stored["messages"][-1]["content"] == "你好完成"
+    assert stored["title"] == "帮我改一个文件"
+    assert stored["status"] == "idle"
+
+
+def test_cancel_marks_session_and_is_idempotent(tmp_path: Path) -> None:
+    executor = FakeExecutor(
+        [
+            RawChatEvent(type="token", content="部分输出"),
+            RawChatEvent(type="token", content="不会到"),
+        ]
+    )
+    executor.cancel_on_first = True
+    client, _service, _fake, project, _repository = harness(tmp_path, executor)
+    session = create_session(client, project)
+
+    response = client.post(
+        f"/api/chat/sessions/{session['id']}/messages",
+        json={"content": "开始"},
+    )
+    repeated = client.post(f"/api/chat/sessions/{session['id']}/cancel")
+
+    events = sse_events(response.text)
+    assert events[-1]["type"] == "cancelled"
+    stored = client.get(f"/api/chat/sessions/{session['id']}").json()
+    assert stored["status"] == "cancelled"
+    assert stored["messages"][-1]["content"] == "部分输出"
+    assert repeated.status_code == 200
+    assert repeated.json()["cancelled"] is False
+
+
+def test_failure_keeps_user_input_and_returns_readable_error(tmp_path: Path) -> None:
+    executor = FakeExecutor()
+    executor.raise_error = RuntimeError("boom")
+    client, _service, _fake, project, _repository = harness(tmp_path, executor)
+    session = create_session(client, project)
+
+    response = client.post(
+        f"/api/chat/sessions/{session['id']}/messages",
+        json={"content": "保留我"},
+    )
+
+    events = sse_events(response.text)
+    assert events[-1]["type"] == "error"
+    assert "RuntimeError" in str(events[-1]["message"])
+    stored = client.get(f"/api/chat/sessions/{session['id']}").json()
+    assert stored["status"] == "failed"
+    assert stored["messages"][0]["content"] == "保留我"
+    assert stored["messages"][-1]["is_error"] is True
+
+
+def test_validation_errors_and_busy_session_return_envelopes(tmp_path: Path) -> None:
+    client, _service, _fake, project, repository = harness(tmp_path)
+    session = create_session(client, project)
+
+    empty = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"content": "   "})
+    missing = client.post(
+        "/api/chat/sessions",
+        json={
+            "tool_id": "claude-code",
+            "profile_id": PROFILE_ID,
+            "project_dir": str(tmp_path / "missing"),
+        },
+    )
+    unknown = client.get("/api/chat/sessions/22222222-2222-4222-8222-222222222222")
+
+    def mark_running(store: ChatStore) -> None:
+        for item in store.sessions:
+            if item.id == session["id"]:
+                item.status = "running"
+
+    repository.mutate(mark_running)
+    busy = client.post(
+        f"/api/chat/sessions/{session['id']}/messages",
+        json={"content": "再来"},
+    )
+
+    assert empty.status_code == 422
+    assert missing.status_code == 400
+    assert missing.json()["code"] == "CHAT_CONTEXT_INVALID"
+    assert unknown.status_code == 404
+    assert busy.status_code == 409
+    assert busy.json()["code"] == "CHAT_BUSY"
+
+
+def test_secret_in_output_is_redacted_before_sse_and_storage(tmp_path: Path) -> None:
+    executor = FakeExecutor([RawChatEvent(type="token", content=f"key={SECRET}")])
+    client, _service, _fake, project, repository = harness(tmp_path, executor)
+    session = create_session(client, project)
+
+    response = client.post(
+        f"/api/chat/sessions/{session['id']}/messages",
+        json={"content": "看这个 key " + SECRET},
+    )
+
+    assert SECRET not in response.text
+    assert SECRET not in repository.path.read_text(encoding="utf-8")
+    assert "sk-a****" in response.text
+
+
+def test_unknown_cli_events_degrade_to_readable_status_and_text() -> None:
+    statuses = list(parse_json_event({"type": "mystery.event"}))
+    plain = list(parse_output_line("not json at all"))
+
+    assert statuses[0].type == "status"
+    assert "未识别事件" in (statuses[0].message or "")
+    assert plain[0].type == "token"
+    assert plain[0].content == "not json at all"
+
+
+def test_cancel_without_running_process_is_idempotent(tmp_path: Path) -> None:
+    client, _service, _fake, project, _repository = harness(tmp_path)
+    session = create_session(client, project)
+
+    first = client.post(f"/api/chat/sessions/{session['id']}/cancel")
+    second = client.post(f"/api/chat/sessions/{session['id']}/cancel")
+
+    assert first.json()["cancelled"] is False
+    assert second.json()["cancelled"] is False
+
+
+def test_adapters_declare_verified_reasoning_effort_levels(tmp_path: Path) -> None:
+    from app.adapters.gemini_cli import GeminiCliAdapter
+    from app.adapters.opencode import OpenCodeAdapter
+
+    claude = ClaudeCodeAdapter(tmp_path / "claude", which=lambda _name: None)
+    codex = CodexCliAdapter(tmp_path / "codex", which=lambda _name: None)
+    gemini = GeminiCliAdapter(tmp_path / "gemini", which=lambda _name: None)
+    opencode = OpenCodeAdapter(tmp_path / "opencode", which=lambda _name: None)
+
+    assert claude.capabilities.reasoning_effort is True
+    assert claude.capabilities.reasoning_effort_levels == ["low", "medium", "high", "xhigh", "max"]
+    assert codex.capabilities.reasoning_effort is True
+    assert codex.capabilities.reasoning_effort_levels == ["low", "medium", "high"]
+    assert gemini.capabilities.reasoning_effort is False
+    assert gemini.capabilities.reasoning_effort_levels == []
+    assert opencode.capabilities.reasoning_effort is False
+    assert claude.capabilities.resume is True
+    assert codex.capabilities.resume is True
+    assert gemini.capabilities.resume is False
+    assert opencode.capabilities.resume is False
+
+
+def test_create_session_persists_normalized_reasoning_effort(tmp_path: Path) -> None:
+    client, _service, _fake, project, _repository = harness(tmp_path)
+
+    response = client.post(
+        "/api/chat/sessions",
+        json={
+            "tool_id": "claude-code",
+            "profile_id": PROFILE_ID,
+            "project_dir": str(project),
+            "reasoning_effort": "  High ",
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["reasoning_effort"] == "high"
+    listed = client.get("/api/chat/sessions").json()["sessions"]
+    assert listed[0]["reasoning_effort"] == "high"
+
+
+def test_create_session_rejects_unsupported_reasoning_effort(tmp_path: Path) -> None:
+    client, _service, _fake, project, _repository = harness(tmp_path)
+
+    response = client.post(
+        "/api/chat/sessions",
+        json={
+            "tool_id": "claude-code",
+            "profile_id": PROFILE_ID,
+            "project_dir": str(project),
+            "reasoning_effort": "ultra",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "CHAT_REASONING_EFFORT_UNSUPPORTED"
+
+
+def test_stream_passes_reasoning_effort_to_claude_command(tmp_path: Path) -> None:
+    client, _service, fake, project, _repository = harness(tmp_path)
+    session = client.post(
+        "/api/chat/sessions",
+        json={
+            "tool_id": "claude-code",
+            "profile_id": PROFILE_ID,
+            "project_dir": str(project),
+            "reasoning_effort": "xhigh",
+        },
+    ).json()
+
+    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"content": "读一个文件"})
+
+    command = fake.calls[0][0]
+    assert "--effort" in command
+    assert command[command.index("--effort") + 1] == "xhigh"
+
+
+def test_build_chat_command_maps_codex_reasoning_effort_to_config() -> None:
+    from app.services.chat import build_chat_command
+
+    command = build_chat_command("codex-cli", "codex", "gpt-5", "hi", "medium")
+
+    assert command == [
+        "codex",
+        "exec",
+        "--json",
+        "--model",
+        "gpt-5",
+        "-c",
+        "model_reasoning_effort=medium",
+        "hi",
+    ]
+
+
+def test_chat_environment_preserves_windows_system_root_and_session_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SystemRoot", r"C:\Windows")
+    client, _service, fake, project, repository = harness(tmp_path)
+    session = create_session(client, project)
+
+    def set_model(store) -> None:
+        store.sessions[0].model = "deepseek-v4.1-flash-1017"
+
+    repository.mutate(set_model)
+    client.post(
+        f"/api/chat/sessions/{session['id']}/messages",
+        json={"content": "继续对话"},
+    )
+
+    command, _cwd, env = fake.calls[0]
+    assert env["SystemRoot"] == r"C:\Windows"
+    assert env["ANTHROPIC_MODEL"] == "deepseek-v4.1-flash-1017"
+    assert "--model" not in command
+
+
+def test_claude_command_uses_env_model_without_cli_model_flag() -> None:
+    from app.services.chat import build_chat_command
+
+    command = build_chat_command("claude-code", "claude", "deepseek-v4.1-flash-1017", "hi")
+
+    assert "--model" not in command
+    assert "deepseek-v4.1-flash-1017" not in command
+
+
+def test_create_session_persists_resume_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, service, _fake, project, _repository = harness(tmp_path)
+    source = SimpleNamespace(id="source-session", title="旧标题")
+    monkeypatch.setattr(service._launcher, "find_session", lambda _tool, _session: source)
+
+    response = client.post(
+        "/api/chat/sessions",
+        json={
+            "tool_id": "claude-code",
+            "profile_id": PROFILE_ID,
+            "project_dir": str(project),
+            "resume_from_tool_id": "claude-code",
+            "resume_from_session_id": "source-session",
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["title"] == "续 · 旧标题"
+    assert body["resume_from_tool_id"] == "claude-code"
+    assert body["resume_from_session_id"] == "source-session"
+
+
+def test_create_session_rejects_missing_or_cross_tool_resume_source(tmp_path: Path) -> None:
+    client, _service, _fake, project, _repository = harness(tmp_path)
+    missing = client.post(
+        "/api/chat/sessions",
+        json={
+            "tool_id": "claude-code",
+            "profile_id": PROFILE_ID,
+            "project_dir": str(project),
+            "resume_from_tool_id": "claude-code",
+            "resume_from_session_id": "missing-session",
+        },
+    )
+    assert missing.status_code == 404
+    assert missing.json()["code"] == "CHAT_RESUME_SOURCE_NOT_FOUND"
+
+    cross = client.post(
+        "/api/chat/sessions",
+        json={
+            "tool_id": "claude-code",
+            "profile_id": PROFILE_ID,
+            "project_dir": str(project),
+            "resume_from_tool_id": "codex-cli",
+            "resume_from_session_id": "source-session",
+        },
+    )
+    assert cross.status_code == 422
+    assert cross.json()["code"] == "CHAT_RESUME_TOOL_MISMATCH"
+
+
+def test_create_session_rejects_unsupported_resume_capability(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, service, _fake, project, _repository = harness(tmp_path)
+    monkeypatch.setattr(service._launcher, "capabilities", lambda _tool: ToolCapabilities())
+    response = client.post(
+        "/api/chat/sessions",
+        json={
+            "tool_id": "claude-code",
+            "profile_id": PROFILE_ID,
+            "project_dir": str(project),
+            "resume_from_tool_id": "claude-code",
+            "resume_from_session_id": "source-session",
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["code"] == "CHAT_RESUME_UNSUPPORTED"
+
+
+def test_resume_commands_use_cli_resume_arguments() -> None:
+    from app.services.chat import build_chat_command
+
+    claude = build_chat_command(
+        "claude-code", "claude", "claude-sonnet-4", "hi", None, "source-session"
+    )
+    assert claude[claude.index("--resume") + 1] == "source-session"
+
+    codex = build_chat_command("codex-cli", "codex", "gpt-5", "hi", None, "source-session")
+    assert codex[:4] == ["codex", "exec", "resume", "source-session"]
+    assert "--json" in codex
+
+
+def test_patch_session_updates_model_and_reasoning_effort(tmp_path: Path) -> None:
+    client, _service, _fake, project, _repository = harness(tmp_path)
+    session = create_session(client, project)
+
+    profiles = ProfileRepository(tmp_path / "data")
+
+    def add_model(store) -> None:
+        profile = store.profiles[0]
+        profile.models.append(ModelEntry(id="claude-opus-4"))
+
+    profiles.mutate(add_model)
+
+    response = client.patch(
+        f"/api/chat/sessions/{session['id']}",
+        json={"model": "claude-opus-4", "reasoning_effort": "high"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["model"] == "claude-opus-4"
+    assert body["reasoning_effort"] == "high"
+
+
+def test_patch_session_rejects_model_outside_profile(tmp_path: Path) -> None:
+    client, _service, _fake, project, _repository = harness(tmp_path)
+    session = create_session(client, project)
+
+    response = client.patch(
+        f"/api/chat/sessions/{session['id']}",
+        json={"model": "gpt-5"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "CHAT_MODEL_UNKNOWN"
+
+
+def test_patch_session_rejects_unsupported_reasoning_effort(tmp_path: Path) -> None:
+    client, _service, _fake, project, _repository = harness(tmp_path)
+    session = create_session(client, project)
+
+    response = client.patch(
+        f"/api/chat/sessions/{session['id']}",
+        json={"reasoning_effort": "ultra"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "CHAT_REASONING_EFFORT_UNSUPPORTED"
+
+
+def test_patch_session_rejects_while_running(tmp_path: Path) -> None:
+    client, _service, _fake, project, repository = harness(tmp_path)
+    session = create_session(client, project)
+
+    def set_running(store) -> None:
+        store.sessions[0].status = "running"
+
+    repository.mutate(set_running)
+
+    response = client.patch(
+        f"/api/chat/sessions/{session['id']}",
+        json={"reasoning_effort": "high"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "CHAT_BUSY"
+
+
+def test_stream_uses_session_model_override(tmp_path: Path) -> None:
+    client, _service, fake, project, _repository = harness(tmp_path)
+
+    profiles = ProfileRepository(tmp_path / "data")
+
+    def add_model(store) -> None:
+        profile = store.profiles[0]
+        profile.models.append(ModelEntry(id="claude-opus-4"))
+
+    profiles.mutate(add_model)
+    session = create_session(client, project)
+    client.patch(
+        f"/api/chat/sessions/{session['id']}",
+        json={"model": "claude-opus-4"},
+    )
+
+    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"content": "读一个文件"})
+
+    command, _cwd, env = fake.calls[0]
+    assert "--model" not in command
+    assert env["ANTHROPIC_MODEL"] == "claude-opus-4"

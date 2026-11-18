@@ -1,22 +1,66 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { RouterLink, RouterView, useRoute } from 'vue-router'
+import { onMounted } from 'vue'
+import { RouterLink, RouterView } from 'vue-router'
 
-const route = useRoute()
-const fullBleed = computed(() => route.name === 'home')
+import BrandMark from './components/BrandMark.vue'
+import { useSettingsStore } from './stores/settings'
+
+const settings = useSettingsStore()
+
+onMounted(() => {
+  void settings.load()
+})
 </script>
 
 <template>
   <div class="app-shell">
-    <header class="app-header">
-      <span class="app-header__brand">CC-Roster</span>
-      <nav class="app-header__nav">
-        <RouterLink to="/">首页</RouterLink>
-        <RouterLink to="/tools">工具</RouterLink>
-        <RouterLink to="/profiles">档案</RouterLink>
+    <aside class="app-sidebar">
+      <div class="brand">
+        <BrandMark />
+        <span class="brand__name">CC-Roster</span>
+      </div>
+
+      <nav class="app-nav" aria-label="主导航">
+        <RouterLink class="app-nav__link" to="/" aria-label="工作台">
+          <svg class="app-nav__icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <rect x="2" y="2" width="5" height="5" rx="1.4" />
+            <rect x="9" y="2" width="5" height="5" rx="1.4" />
+            <rect x="2" y="9" width="5" height="5" rx="1.4" />
+            <rect x="9" y="9" width="5" height="5" rx="1.4" />
+          </svg>
+          <span class="app-nav__label">工作台</span>
+        </RouterLink>
+        <RouterLink class="app-nav__link" to="/providers" aria-label="供应商">
+          <svg class="app-nav__icon app-nav__icon--outline" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <rect x="2.5" y="3" width="11" height="10" rx="2" />
+            <path d="M5 6h6M5 9h3" />
+          </svg>
+          <span class="app-nav__label">供应商</span>
+        </RouterLink>
+        <RouterLink class="app-nav__link" to="/audit" aria-label="操作记录">
+          <svg class="app-nav__icon app-nav__icon--outline" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <circle cx="8" cy="8" r="5.5" />
+            <path d="M8 4.8v3.5l2.3 1.5" />
+          </svg>
+          <span class="app-nav__label">操作记录</span>
+        </RouterLink>
+        <RouterLink class="app-nav__link" to="/usage" aria-label="用量">
+          <svg class="app-nav__icon app-nav__icon--outline" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M3 13V9M8 13V4M13 13V7" />
+          </svg>
+          <span class="app-nav__label">用量</span>
+        </RouterLink>
+        <RouterLink class="app-nav__link" to="/settings" aria-label="设置">
+          <svg class="app-nav__icon app-nav__icon--outline" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <circle cx="8" cy="8" r="2.2" />
+            <path d="M8 2.2v1.4M8 12.4v1.4M2.2 8h1.4M12.4 8h1.4M3.9 3.9l1 1M11.1 11.1l1 1M12.1 3.9l-1 1M4.9 11.1l-1 1" />
+          </svg>
+          <span class="app-nav__label">设置</span>
+        </RouterLink>
       </nav>
-    </header>
-    <main class="app-main" :class="{ 'app-main--full': fullBleed }">
+    </aside>
+
+    <main class="app-main">
       <RouterView />
     </main>
   </div>
@@ -24,51 +68,135 @@ const fullBleed = computed(() => route.name === 'home')
 
 <style scoped>
 .app-shell {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: var(--layout-nav-width) minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;
+  overflow: hidden;
+  background: var(--color-bg);
 }
 
-.app-header {
+.app-sidebar {
   display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: var(--space-5);
-  border-bottom: 1px solid var(--color-border);
-  padding: var(--space-3) var(--space-5);
+  flex-direction: column;
+  gap: var(--space-xl);
+  min-height: 0;
+  padding: var(--space-lg) 14px;
+  border-right: 1px solid var(--color-border);
   background: var(--color-surface);
 }
 
-.app-header__brand {
-  font-weight: 600;
-}
-
-.app-header__nav {
+.brand {
   display: flex;
-  gap: var(--space-4);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0 10px;
 }
 
-.app-header__nav a {
-  color: inherit;
+.brand__name {
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.app-nav__link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-md);
   text-decoration: none;
+  transition:
+    background 120ms ease-out,
+    color 120ms ease-out;
 }
 
-.app-header__nav a.router-link-active {
-  color: var(--color-accent);
+.app-nav__link:hover {
+  background: var(--color-bg-subtle);
+  color: var(--color-text);
+}
+
+.app-nav__link[aria-current='page'] {
+  background: var(--color-bg-selected);
+  color: var(--color-primary-hover);
   font-weight: 600;
+}
+
+.app-nav__icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: currentColor;
+}
+
+.app-nav__icon--outline {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
 }
 
 .app-main {
-  flex: 1;
+  min-width: 0;
   min-height: 0;
-  overflow-y: auto;
-  padding: var(--space-5);
+  overflow: hidden;
 }
 
-.app-main--full {
-  display: flex;
-  overflow: hidden;
-  padding: 0;
+@media (max-width: 1180px) {
+  .app-shell {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 980px) {
+  .app-shell {
+    grid-template-columns: 184px minmax(0, 1fr);
+  }
+
+  .app-sidebar {
+    padding: var(--space-md) 10px;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .app-sidebar {
+    align-items: center;
+    padding: var(--space-md) var(--space-xs);
+  }
+
+  .brand {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .brand__name,
+  .app-nav__label {
+    display: none;
+  }
+
+  .app-nav__link {
+    width: 40px;
+    justify-content: center;
+    padding: 0;
+  }
 }
 </style>

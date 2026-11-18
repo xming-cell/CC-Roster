@@ -14,9 +14,15 @@ from fastapi.testclient import TestClient
 
 from app.adapters.base import ToolAdapter
 from app.adapters.registry import ToolRegistry
-from app.api.profiles import get_health_check_service, get_profile_service
+from app.api.audit import get_audit_service
+from app.api.profiles import (
+    get_health_check_service,
+    get_profile_import_service,
+    get_profile_service,
+)
 from app.core.config import SecretBackendSetting
 from app.main import create_app
+from app.repositories.audit import AuditRepository
 from app.repositories.profiles import ProfileRepository
 from app.repositories.secrets import (
     FileSecretStore,
@@ -32,11 +38,13 @@ from app.schemas.profile import (
     SecretRef,
     ToolBinding,
 )
+from app.services.audit_service import AuditService
 from app.services.health_check import (
     HealthCheckService,
     HealthCheckTransport,
     UrllibHealthCheckTransport,
 )
+from app.services.profile_import_service import ProfileImportService
 from app.services.profile_service import ProfileService
 from app.services.tool_discovery import ToolDiscoveryService
 
@@ -138,6 +146,7 @@ class ProfileHarness:
     keyring: FakeKeyring
     data_dir: Path
     health_transport: HealthCheckTransport
+    audit: AuditRepository
 
 
 def make_profile_harness(
@@ -154,17 +163,22 @@ def make_profile_harness(
         file_store=FileSecretStore(data_dir),
     )
     repository = ProfileRepository(data_dir)
+    audit = AuditRepository(data_dir / "db" / "app.sqlite3")
     service = ProfileService(
         repository,
         secrets,
         ToolDiscoveryService(ToolRegistry(adapters)),
+        audit,
     )
+    import_service = ProfileImportService(repository, secrets, audit)
     transport = health_transport or UrllibHealthCheckTransport()
     health_service = HealthCheckService(repository, secrets, transport)
     app = create_app()
     app.dependency_overrides[get_profile_service] = lambda: service
     app.dependency_overrides[get_health_check_service] = lambda: health_service
-    return ProfileHarness(TestClient(app), repository, keyring, data_dir, transport)
+    app.dependency_overrides[get_audit_service] = lambda: AuditService(audit)
+    app.dependency_overrides[get_profile_import_service] = lambda: import_service
+    return ProfileHarness(TestClient(app), repository, keyring, data_dir, transport, audit)
 
 
 def profile_payload(**overrides: object) -> dict[str, object]:

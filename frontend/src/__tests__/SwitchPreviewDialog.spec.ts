@@ -1,219 +1,261 @@
-import { describe, expect, it } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 
-import type { SwitchPreviewResponse } from '../api/switch'
+import type { ProfileView } from '../api/profiles'
+import type { RollbackResponse } from '../api/snapshots'
+import type { SwitchApplyResponse, SwitchPreviewResponse } from '../api/switch'
+import type { ToolView } from '../api/tools'
 import SwitchPreviewDialog from '../components/SwitchPreviewDialog.vue'
 import { getByRole, getByText } from './dom'
 
-function makePreview(
-  overrides: Partial<SwitchPreviewResponse> = {},
-): SwitchPreviewResponse {
-  const path = '/home/me/.claude/settings.json'
+const NOW = '2026-11-17T10:00:00+00:00'
+const TARGET = '/home/me/.claude/settings.json'
+const HASH = 'a'.repeat(64)
+
+function jsonResponse(body: unknown, status = 200): Response {
   return {
-    tool_id: 'claude-code',
-    profile_id: 'profile-1',
-    model: 'claude-sonnet-4',
-    available_models: [{ id: 'claude-sonnet-4', display_name: 'Sonnet' }],
-    files: [
-      {
-        path,
-        format: 'json',
-        action: 'updated',
-        before_sha256: 'a'.repeat(64),
-        after_sha256: 'b'.repeat(64),
-        before_size: 120,
-        after_size: 140,
-        changes: [
-          {
-            path: 'env.ANTHROPIC_BASE_URL',
-            field: 'env.ANTHROPIC_BASE_URL',
-            action: 'set',
-            before: 'https://old.example.com',
-            after: 'https://relay.example.com',
-          },
-          {
-            path: 'env.ANTHROPIC_API_KEY',
-            field: 'env.ANTHROPIC_API_KEY',
-            action: 'remove',
-            before: 'sk-a****cdef',
-            after: null,
-          },
-        ],
-      },
-    ],
-    blockers: [],
-    warnings: [],
-    restart_required: true,
-    restart_message: 'Claude Code 需要重启后才会读取新的 settings.json',
-    observations: [
-      {
-        path,
-        exists: true,
-        sha256: 'a'.repeat(64),
-        size: 120,
-        mtime_ns: 1,
-      },
-    ],
-    preview_digest: 'c'.repeat(64),
-    can_apply: true,
-    ...overrides,
-  }
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => Promise.resolve(body),
+  } as unknown as Response
 }
 
-function mountDialog(
-  overrides: Partial<SwitchPreviewResponse> = {},
-  props: Partial<{
-    busy: boolean
-    error: string | null
-    errorCode: string | null
-    details: {
-      conflicts?: {
-        path: string
-        reason: 'MISSING' | 'CREATED' | 'CONTENT_CHANGED'
-        expected: {
-          path: string
-          exists: boolean
-          sha256: string | null
-          size: number
-          mtime_ns: number | null
-        }
-        actual: {
-          path: string
-          exists: boolean
-          sha256: string | null
-          size: number
-          mtime_ns: number | null
-        }
-      }[]
-      stale_paths?: string[]
-    } | null
-    profileName: string | null
-  }> = {},
-) {
-  return mount(SwitchPreviewDialog, {
-    props: {
-      preview: makePreview(overrides),
-      profileName: '主力档案',
-      busy: false,
-      error: null,
-      errorCode: null,
-      details: null,
-      ...props,
+const tool: ToolView = {
+  id: 'claude-code',
+  display_name: 'Claude Code',
+  status: 'ok',
+  installed: true,
+  configured: true,
+  version: null,
+  provider: 'Anthropic',
+  base_url: 'https://api.anthropic.com',
+  model: 'claude-sonnet-4-5',
+  is_third_party: false,
+  config_path: TARGET,
+  last_modified: NOW,
+  has_secret: true,
+  secret_preview: 'sk-a...cdef',
+  warnings: [],
+  capabilities: { read: true, write: true, sessions: false, launch: false, write_mode: 'managed_fields' },
+}
+
+const profile: ProfileView = {
+  id: 'profile-b',
+  name: 'Kimi K2',
+  protocol: 'openai',
+  base_url: 'https://api.moonshot.cn/v1',
+  models: [{ id: 'kimi-k2-0905-preview', display_name: null }],
+  created_at: NOW,
+  updated_at: NOW,
+  has_secret: true,
+  secret_preview: 'sk-m...71c8',
+  secret_backend: 'keyring',
+  used_by: [],
+  warnings: [],
+}
+
+const preview: SwitchPreviewResponse = {
+  tool_id: 'claude-code',
+  profile_id: 'profile-b',
+  model: 'kimi-k2-0905-preview',
+  available_models: [{ id: 'kimi-k2-0905-preview', display_name: null }],
+  files: [
+    {
+      path: TARGET,
+      format: 'json',
+      action: 'updated',
+      before_sha256: HASH,
+      after_sha256: 'b'.repeat(64),
+      before_size: 10,
+      after_size: 12,
+      changes: [
+        { path: TARGET, field: 'model', action: 'set', before: 'claude-opus-4', after: 'claude-sonnet-4' },
+        { path: TARGET, field: 'api_key', action: 'set', before: 'sk-••••9f2c', after: 'sk-••••4a71' },
+      ],
     },
+  ],
+  blockers: [],
+  warnings: [],
+  restart_required: true,
+  restart_message: 'Claude Code 需要重启',
+  observations: [{ path: TARGET, exists: true, sha256: HASH, size: 10, mtime_ns: 1 }],
+  preview_digest: 'c'.repeat(64),
+  can_apply: true,
+}
+
+const applyResult: SwitchApplyResponse = {
+  tool_id: 'claude-code',
+  profile_id: 'profile-b',
+  snapshot_id: 'snapshot-1',
+  audit_id: 'audit-1',
+  files: [{ path: TARGET, action: 'updated', sha256: 'd'.repeat(64), size: 12 }],
+  binding: {
+    tool_id: 'claude-code',
+    profile_id: 'profile-b',
+    bound_at: NOW,
+    active: true,
+    applied_at: NOW,
+    snapshot_id: 'snapshot-1',
+  },
+  warnings: [],
+  restart_required: true,
+  restart_message: 'Claude Code 需要重启',
+  applied_at: NOW,
+}
+
+const rollbackResult: RollbackResponse = {
+  snapshot_id: 'snapshot-1',
+  pre_rollback_snapshot_id: 'snapshot-2',
+  files: [{ path: TARGET, action: 'restored', sha256: HASH, size: 10 }],
+}
+
+interface CallRecord {
+  url: string
+  body: Record<string, unknown>
+}
+
+function makeServer(options: {
+  preview?: SwitchPreviewResponse
+  apply?: { status: number; body: unknown }
+  rollback?: RollbackResponse
+} = {}) {
+  const calls: CallRecord[] = []
+  const previewBody = options.preview ?? preview
+  const applyBody = options.apply ?? { status: 200, body: applyResult }
+  const rollbackBody = options.rollback ?? rollbackResult
+
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const body =
+        typeof init?.body === 'string'
+          ? (JSON.parse(init.body) as Record<string, unknown>)
+          : {}
+      calls.push({ url, body })
+      if (url === '/api/switch/preview') {
+        return Promise.resolve(jsonResponse(previewBody))
+      }
+      if (url === '/api/switch/apply') {
+        return Promise.resolve(jsonResponse(applyBody.body, applyBody.status))
+      }
+      if (url.startsWith('/api/snapshots/') && url.endsWith('/rollback')) {
+        return Promise.resolve(jsonResponse(rollbackBody))
+      }
+      return Promise.reject(new Error(`unexpected request: ${url}`))
+    }),
+  )
+  return calls
+}
+
+function mountDialog() {
+  return mount(SwitchPreviewDialog, {
+    props: { tool, profile },
+    global: { plugins: [createPinia()] },
+    attachTo: document.body,
   })
 }
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  document.body.innerHTML = ''
+})
 
 describe('SwitchPreviewDialog', () => {
-  it('renders file paths, field-level before / after values and the restart notice', () => {
+  it('shows the field diff and restart notice after preview', async () => {
+    makeServer()
     const wrapper = mountDialog()
+    await flushPromises()
 
-    expect(getByRole(wrapper, 'dialog').attributes('aria-modal')).toBe('true')
-    expect(getByRole(wrapper, 'heading', { name: '确认切换到「主力档案」？' })).toBeTruthy()
-    expect(
-      getByText(wrapper, 'Claude Code 需要重启后才会读取新的 settings.json'),
-    ).toBeTruthy()
-    expect(wrapper.text()).toContain('/home/me/.claude/settings.json')
-    expect(wrapper.text()).toContain('env.ANTHROPIC_BASE_URL')
-    expect(wrapper.text()).toContain('https://old.example.com')
-    expect(wrapper.text()).toContain('https://relay.example.com')
-    expect(wrapper.text()).toContain('删除')
-    expect(wrapper.text()).toContain('（删除）')
+    expect(getByText(wrapper, '字段变更').exists()).toBe(true)
+    expect(getByText(wrapper, 'model').exists()).toBe(true)
+    expect(getByText(wrapper, 'claude-sonnet-4').exists()).toBe(true)
+    expect(getByText(wrapper, '重启后生效').exists()).toBe(true)
+    expect(getByRole(wrapper, 'button', { name: '应用切换' }).exists()).toBe(true)
   })
 
-  it('disables confirmation when blockers exist', () => {
-    const wrapper = mountDialog({
-      can_apply: false,
-      files: [],
-      blockers: [
-        {
-          code: 'PARSE_ERROR',
-          message: '第 1 行格式错误',
-          path: '/home/me/.claude/settings.json',
-        },
-      ],
-    })
-
-    const confirm = getByRole(wrapper, 'button', { name: '确认应用' })
-    expect(confirm.attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('PARSE_ERROR')
-    expect(wrapper.text()).toContain('第 1 行格式错误')
-    expect(wrapper.text()).toContain('没有可应用的文件改动')
-  })
-
-  it('shows warnings and stale paths, then emits repreview', async () => {
-    const wrapper = mountDialog(
-      {
-        can_apply: false,
-        warnings: [{ code: 'MODEL_SHADOWED', message: '顶层 model 仍保留原值' }],
-      },
-      {
-        error: '预览已过期, 档案或模型在预览后发生变化, 请重新预览',
-        errorCode: 'SWITCH_PREVIEW_STALE',
-        details: { stale_paths: ['/home/me/.claude/settings.json'] },
-      },
-    )
-
-    expect(getByRole(wrapper, 'alert').text()).toContain('预览已过期')
-    expect(wrapper.text()).toContain('MODEL_SHADOWED')
-    expect(wrapper.text()).toContain('过期文件：/home/me/.claude/settings.json')
-
-    await getByRole(wrapper, 'button', { name: '重新预览' }).trigger('click')
-
-    expect(wrapper.emitted('repreview')).toHaveLength(1)
-  })
-
-  it('shows conflict paths and reasons, then emits repreview', async () => {
-    const expected = {
-      path: '/home/me/.claude/settings.json',
-      exists: true,
-      sha256: 'a'.repeat(64),
-      size: 120,
-      mtime_ns: 1,
-    }
-    const wrapper = mountDialog(
-      { can_apply: false },
-      {
-        error: '1 个文件在预览后发生变化, 已拒绝写入',
-        errorCode: 'WRITE_CONFLICT',
-        details: {
-          conflicts: [
-            {
-              path: expected.path,
-              reason: 'CONTENT_CHANGED',
-              expected,
-              actual: { ...expected, sha256: 'b'.repeat(64) },
-            },
-          ],
-        },
-      },
-    )
-
-    expect(wrapper.text()).toContain(expected.path)
-    expect(wrapper.text()).toContain('文件内容已变化')
-
-    await getByRole(wrapper, 'button', { name: '重新预览' }).trigger('click')
-
-    expect(wrapper.emitted('repreview')).toHaveLength(1)
-  })
-
-  it('emits cancel from the button and Escape without confirming', async () => {
+  it('closes without applying when cancelled', async () => {
+    const calls = makeServer()
     const wrapper = mountDialog()
+    await flushPromises()
 
     await getByRole(wrapper, 'button', { name: '取消' }).trigger('click')
-    await getByRole(wrapper, 'dialog').trigger('keydown', { key: 'Escape' })
 
-    expect(wrapper.emitted('cancel')).toHaveLength(2)
-    expect(wrapper.emitted('confirm')).toBeUndefined()
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    expect(calls.map((call) => call.url)).toEqual(['/api/switch/preview'])
   })
 
-  it('shows the in-flight state and disables actions while applying', async () => {
-    const wrapper = mountDialog({}, { busy: true })
+  it('applies with the preview digest and shows the snapshot', async () => {
+    const calls = makeServer()
+    const wrapper = mountDialog()
+    await flushPromises()
 
-    const confirm = getByRole(wrapper, 'button', { name: '应用中…' })
-    expect(confirm.attributes('disabled')).toBeDefined()
-    expect(getByRole(wrapper, 'button', { name: '取消' }).attributes('disabled')).toBeDefined()
+    await getByRole(wrapper, 'button', { name: '应用切换' }).trigger('click')
+    await flushPromises()
 
-    await confirm.trigger('click')
-    expect(wrapper.emitted('confirm')).toBeUndefined()
+    const applyCall = calls.find((call) => call.url === '/api/switch/apply')
+    expect(applyCall?.body.preview_digest).toBe('c'.repeat(64))
+    expect(applyCall?.body.observations).toEqual(preview.observations)
+    expect(getByText(wrapper, '切换完成').exists()).toBe(true)
+    expect(getByText(wrapper, 'snapshot-1').exists()).toBe(true)
+    expect(getByText(wrapper, 'audit-1').exists()).toBe(true)
+  })
+
+  it('turns a stale preview into a conflict that can be rechecked', async () => {
+    const calls = makeServer({
+      apply: {
+        status: 409,
+        body: { code: 'SWITCH_PREVIEW_STALE', message: '目标文件在预览后发生变化' },
+      },
+    })
+    const wrapper = mountDialog()
+    await flushPromises()
+
+    await getByRole(wrapper, 'button', { name: '应用切换' }).trigger('click')
+    await flushPromises()
+
+    expect(getByText(wrapper, '预览已失效').exists()).toBe(true)
+    expect(getByText(wrapper, '未写入').exists()).toBe(true)
+
+    await getByRole(wrapper, 'button', { name: '重新检查' }).trigger('click')
+    await flushPromises()
+
+    expect(calls.filter((call) => call.url === '/api/switch/preview')).toHaveLength(2)
+  })
+
+  it('disables apply when the preview has blockers', async () => {
+    makeServer({
+      preview: {
+        ...preview,
+        can_apply: false,
+        blockers: [
+          { code: 'SECRET_MISSING', message: '供应商缺少密钥', path: TARGET },
+        ],
+      },
+    })
+    const wrapper = mountDialog()
+    await flushPromises()
+
+    expect(getByText(wrapper, '存在阻止应用的项').exists()).toBe(true)
+    expect(getByRole(wrapper, 'button', { name: '应用切换' }).attributes('disabled')).toBeDefined()
+  })
+
+  it('rolls back after confirmation and reports both snapshots', async () => {
+    const calls = makeServer()
+    const wrapper = mountDialog()
+    await flushPromises()
+
+    await getByRole(wrapper, 'button', { name: '应用切换' }).trigger('click')
+    await flushPromises()
+    await getByRole(wrapper, 'button', { name: '回滚到快照' }).trigger('click')
+    await getByRole(wrapper, 'button', { name: '确认回滚' }).trigger('click')
+    await flushPromises()
+
+    expect(calls.some((call) => call.url === '/api/snapshots/snapshot-1/rollback')).toBe(true)
+    expect(wrapper.text()).toContain('已回滚到 snapshot-1')
+    expect(wrapper.text()).toContain('snapshot-2')
   })
 })
+
+

@@ -22,24 +22,24 @@ export interface AppearanceResetResponse {
   reset: boolean
 }
 
-export function getAppearances(): Promise<AppearanceListResponse> {
+export function listAppearances(): Promise<AppearanceListResponse> {
   return requestJson<AppearanceListResponse>('/api/appearances')
 }
 
 export function saveAppearance(
   toolId: string,
-  appearance: AppearanceOverride,
+  payload: AppearanceOverride,
 ): Promise<AppearanceView> {
-  return requestJson<AppearanceView>(`/api/appearances/${encodeURIComponent(toolId)}`, {
+  return requestJson<AppearanceView>('/api/appearances/' + encodeURIComponent(toolId), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(appearance),
+    body: JSON.stringify(payload),
   })
 }
 
 export function resetAppearance(toolId: string): Promise<AppearanceResetResponse> {
   return requestJson<AppearanceResetResponse>(
-    `/api/appearances/${encodeURIComponent(toolId)}`,
+    '/api/appearances/' + encodeURIComponent(toolId),
     { method: 'DELETE' },
   )
 }

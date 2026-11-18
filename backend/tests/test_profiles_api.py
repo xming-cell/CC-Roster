@@ -29,6 +29,7 @@ from app.adapters.registry import ToolRegistry
 from app.api.profiles import get_profile_service
 from app.core.redaction import redact_secret
 from app.main import create_app
+from app.repositories.audit import AuditRepository
 from app.repositories.profiles import ProfileRepository
 from app.repositories.secrets import (
     KEYRING_SERVICE_NAME,
@@ -836,6 +837,7 @@ def test_unavailable_secret_store_is_reported_at_list_level(tmp_path: Path) -> N
         repository,
         secrets,
         ToolDiscoveryService(ToolRegistry([])),
+        AuditRepository(data_dir / "db" / "app.sqlite3"),
     )
     app = create_app()
     app.dependency_overrides[get_profile_service] = lambda: service

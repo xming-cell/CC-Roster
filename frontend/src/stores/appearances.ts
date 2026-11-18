@@ -1,75 +1,52 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 
-import { ApiError } from '../api/client'
 import {
-  getAppearances,
-  resetAppearance as resetAppearanceRequest,
-  saveAppearance as saveAppearanceRequest,
+  listAppearances,
+  resetAppearance as requestReset,
+  saveAppearance as requestSave,
 } from '../api/appearances'
 import type { AppearanceOverride } from '../api/appearances'
-
-function errorMessage(error: unknown): string {
-  return error instanceof ApiError ? error.message : '好友外观操作失败'
-}
+import { ApiError } from '../api/client'
 
 export const useAppearancesStore = defineStore('appearances', () => {
   const appearances = ref<Record<string, AppearanceOverride>>({})
   const loading = ref(false)
-  const loadError = ref<string | null>(null)
-  const operationError = ref<string | null>(null)
+  const loaded = ref(false)
+  const error = ref<string | null>(null)
 
-  async function fetchAppearances(): Promise<void> {
+  async function load(): Promise<void> {
     loading.value = true
-    loadError.value = null
+    error.value = null
     try {
-      appearances.value = (await getAppearances()).appearances
+      const response = await listAppearances()
+      appearances.value = response.appearances
+      loaded.value = true
     } catch (caught) {
-      loadError.value = errorMessage(caught)
+      error.value = caught instanceof ApiError ? caught.message : '外观偏好读取失败'
     } finally {
       loading.value = false
     }
   }
 
-  async function save(toolId: string, appearance: AppearanceOverride): Promise<boolean> {
-    operationError.value = null
-    try {
-      const saved = await saveAppearanceRequest(toolId, appearance)
-      const { tool_id: savedToolId, ...override } = saved
-      appearances.value = { ...appearances.value, [savedToolId]: override }
-      return true
-    } catch (caught) {
-      operationError.value = errorMessage(caught)
-      return false
+  async function save(toolId: string, payload: AppearanceOverride): Promise<void> {
+    const saved = await requestSave(toolId, payload)
+    appearances.value = {
+      ...appearances.value,
+      [toolId]: {
+        accent_color: saved.accent_color,
+        background_color: saved.background_color,
+        bubble_preset: saved.bubble_preset,
+      },
     }
   }
 
-  async function reset(toolId: string): Promise<boolean> {
-    operationError.value = null
-    try {
-      await resetAppearanceRequest(toolId)
-      const next = { ...appearances.value }
-      delete next[toolId]
-      appearances.value = next
-      return true
-    } catch (caught) {
-      operationError.value = errorMessage(caught)
-      return false
-    }
+  async function reset(toolId: string): Promise<void> {
+    await requestReset(toolId)
+    const next = { ...appearances.value }
+    delete next[toolId]
+    appearances.value = next
   }
 
-  function clearOperationError(): void {
-    operationError.value = null
-  }
-
-  return {
-    appearances,
-    loading,
-    loadError,
-    operationError,
-    fetchAppearances,
-    save,
-    reset,
-    clearOperationError,
-  }
+  return { appearances, loading, loaded, error, load, save, reset }
 })

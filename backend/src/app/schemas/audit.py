@@ -7,7 +7,17 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-AuditAction = Literal["apply", "rollback"]
+AuditAction = Literal[
+    "apply",
+    "rollback",
+    "profile_create",
+    "profile_update",
+    "profile_copy",
+    "profile_delete",
+    "profile_bind",
+    "profile_unbind",
+    "profile_import",
+]
 AuditResult = Literal["success", "failed", "conflict"]
 
 
@@ -19,7 +29,7 @@ class AuditEntry(BaseModel):
     id: str
     created_at: datetime
     action: AuditAction
-    tool_id: str
+    tool_id: str | None = None
     profile_id: str | None = None
     snapshot_id: str | None = None
     files: list[str] = Field(default_factory=list)

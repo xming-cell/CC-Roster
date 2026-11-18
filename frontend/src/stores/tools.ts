@@ -1,10 +1,9 @@
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { defineStore } from 'pinia'
 
 import { ApiError } from '../api/client'
 import { getTool, getTools } from '../api/tools'
 import type { ToolView, ToolWarning } from '../api/tools'
-import { sortToolsByLastModified } from '../utils/tools'
 
 function errorMessage(error: unknown): string {
   return error instanceof ApiError ? error.message : '工具信息读取失败'
@@ -14,10 +13,8 @@ export const useToolsStore = defineStore('tools', () => {
   const tools = ref<ToolView[]>([])
   const warnings = ref<ToolWarning[]>([])
   const loading = ref(false)
+  const loaded = ref(false)
   const error = ref<string | null>(null)
-  const refreshError = ref<string | null>(null)
-
-  const sortedTools = computed(() => sortToolsByLastModified(tools.value))
 
   const selectedToolId = ref<string | null>(null)
   const selectedTool = ref<ToolView | null>(null)
@@ -31,7 +28,7 @@ export const useToolsStore = defineStore('tools', () => {
     const requestId = ++listRequestId
     loading.value = true
     error.value = null
-    refreshError.value = null
+
     try {
       const response = await getTools()
       if (requestId !== listRequestId) {
@@ -39,23 +36,12 @@ export const useToolsStore = defineStore('tools', () => {
       }
       tools.value = response.tools
       warnings.value = response.warnings
-      if (
-        selectedToolId.value !== null &&
-        !response.tools.some((tool) => tool.id === selectedToolId.value)
-      ) {
-        clearSelection()
-      }
+      loaded.value = true
     } catch (caught) {
       if (requestId !== listRequestId) {
         return
       }
-      if (tools.value.length > 0) {
-        refreshError.value = errorMessage(caught)
-      } else {
-        tools.value = []
-        warnings.value = []
-        error.value = errorMessage(caught)
-      }
+      error.value = errorMessage(caught)
     } finally {
       if (requestId === listRequestId) {
         loading.value = false
@@ -64,20 +50,30 @@ export const useToolsStore = defineStore('tools', () => {
   }
 
   async function selectTool(toolId: string): Promise<void> {
+    const alreadyLoaded =
+      selectedToolId.value === toolId &&
+      (detailLoading.value || (selectedTool.value !== null && detailError.value === null))
+    if (alreadyLoaded) {
+      return
+    }
+
     const requestId = ++detailRequestId
     selectedToolId.value = toolId
     selectedTool.value = null
     detailError.value = null
     detailLoading.value = true
+
     try {
-      const tool = await getTool(toolId)
-      if (requestId === detailRequestId) {
-        selectedTool.value = tool
+      const result = await getTool(toolId)
+      if (requestId !== detailRequestId || selectedToolId.value !== toolId) {
+        return
       }
+      selectedTool.value = result
     } catch (caught) {
-      if (requestId === detailRequestId) {
-        detailError.value = errorMessage(caught)
+      if (requestId !== detailRequestId || selectedToolId.value !== toolId) {
+        return
       }
+      detailError.value = errorMessage(caught)
     } finally {
       if (requestId === detailRequestId) {
         detailLoading.value = false
@@ -95,11 +91,10 @@ export const useToolsStore = defineStore('tools', () => {
 
   return {
     tools,
-    sortedTools,
     warnings,
     loading,
+    loaded,
     error,
-    refreshError,
     selectedToolId,
     selectedTool,
     detailLoading,

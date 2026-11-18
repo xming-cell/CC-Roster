@@ -23,6 +23,9 @@ export interface ToolCapabilities {
   sessions: boolean
   launch: boolean
   write_mode: 'none' | 'managed_fields'
+  reasoning_effort?: boolean
+  reasoning_effort_levels?: string[]
+  resume?: boolean
 }
 
 export interface ToolView {
@@ -56,3 +59,5 @@ export function getTools(): Promise<ToolListResponse> {
 export function getTool(toolId: string): Promise<ToolView> {
   return requestJson<ToolView>(`/api/tools/${encodeURIComponent(toolId)}`)
 }
+
+

@@ -88,8 +88,8 @@ def test_configured_tool_view_exposes_managed_fields(tmp_path: Path) -> None:
     assert view.warnings == []
     assert view.capabilities.read is True
     assert view.capabilities.write is True
-    assert view.capabilities.sessions is False
-    assert view.capabilities.launch is False
+    assert view.capabilities.sessions is True
+    assert view.capabilities.launch is True
     assert view.capabilities.write_mode == "managed_fields"
 
 

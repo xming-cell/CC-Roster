@@ -68,9 +68,12 @@ def test_list_tools_returns_views_and_timezone_aware_timestamps(tmp_path: Path) 
     assert claude["capabilities"] == {
         "read": True,
         "write": True,
-        "sessions": False,
-        "launch": False,
+        "sessions": True,
+        "launch": True,
         "write_mode": "managed_fields",
+        "reasoning_effort": True,
+        "reasoning_effort_levels": ["low", "medium", "high", "xhigh", "max"],
+        "resume": True,
     }
 
     modified = datetime.fromisoformat(claude["last_modified"].replace("Z", "+00:00"))

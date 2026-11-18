@@ -5,18 +5,32 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      name: 'home',
-      component: () => import('../views/HomeView.vue'),
+      name: 'workbench',
+      component: () => import('../views/WorkbenchView.vue'),
+    },
+    {
+      path: '/providers',
+      name: 'providers',
+      component: () => import('../views/ProvidersView.vue'),
+    },
+    {
+      path: '/audit',
+      name: 'audit',
+      component: () => import('../views/AuditView.vue'),
+    },
+    {
+      path: '/usage',
+      name: 'usage',
+      component: () => import('../views/UsageView.vue'),
+    },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: () => import('../views/SettingsView.vue'),
     },
     {
       path: '/tools',
-      name: 'tools',
-      component: () => import('../views/ToolsView.vue'),
-    },
-    {
-      path: '/profiles',
-      name: 'profiles',
-      component: () => import('../views/ProfilesView.vue'),
+      redirect: { name: 'workbench' },
     },
   ],
 })

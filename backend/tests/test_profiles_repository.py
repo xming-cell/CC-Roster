@@ -12,8 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from profile_fixtures import make_binding, make_profile
-from pydantic import ValidationError
+from profile_fixtures import make_binding, make_profile, new_profile_id
 
 from app.core.db import bootstrap_database
 from app.core.errors import AppError
@@ -96,8 +95,9 @@ def test_bindings_roundtrip_and_lookup(tmp_path: Path) -> None:
     repo.mutate(change)
 
     assert repo.list_bindings() == [binding]
-    assert repo.get_binding("codex-cli") == binding
-    assert repo.get_binding("unknown-tool") is None
+    assert repo.get_binding("codex-cli", profile.id) == binding
+    assert repo.get_binding("unknown-tool", profile.id) is None
+    assert repo.get_binding("codex-cli", new_profile_id()) is None
 
 
 def test_reads_are_idempotent_and_never_modify_existing_file(tmp_path: Path) -> None:
@@ -289,8 +289,9 @@ def test_mutate_rejects_store_invariant_breach_without_writing(tmp_path: Path) -
     def duplicate(store: ProfileStore) -> None:
         store.profiles.append(profile)
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(AppError) as excinfo:
         repo.mutate(duplicate)
 
+    assert excinfo.value.code == "PROFILE_STORE_INVALID"
     assert file_hash(path) == original_hash
     assert repo.list_profiles() == [profile]
