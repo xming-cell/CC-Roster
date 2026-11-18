@@ -12,7 +12,7 @@ from app.api.launcher import get_launch_service
 from app.main import create_app
 from app.repositories.profiles import ProfileRepository
 from app.repositories.secrets import build_secret_store
-from app.services.launcher import LaunchService, terminal_argv
+from app.services.launcher import LaunchService, SubprocessTerminalSpawner, terminal_argv
 
 SECRET = "sk-ant-launch-secret-123456"
 
@@ -271,3 +271,26 @@ def test_model_with_shell_metacharacters_is_rejected(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_terminal_spawner_merges_parent_environment(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        pid = 4242
+
+    def fake_popen(*_args, **kwargs):
+        captured.update(kwargs)
+        return FakeProcess()
+
+    monkeypatch.setenv("SystemRoot", r"C:\Windows")
+    monkeypatch.setattr("app.services.launcher.subprocess.Popen", fake_popen)
+
+    spawner = SubprocessTerminalSpawner(platform="win32")
+    pid = spawner.spawn(["cmd.exe"], tmp_path, {"EXTRA_VALUE": "1"})
+
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert env["SystemRoot"] == r"C:\Windows"
+    assert env["EXTRA_VALUE"] == "1"
+    assert pid == 4242

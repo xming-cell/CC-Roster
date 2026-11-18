@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
+from app.core.env import merge_process_env
 from app.core.errors import AppError
 
 RawEventType = Literal["status", "token", "tool", "error"]
@@ -68,7 +69,7 @@ class SubprocessChatExecutor:
         process = subprocess.Popen(
             argv,
             cwd=str(cwd),
-            env=dict(env),
+            env=merge_process_env(env),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

@@ -13,6 +13,7 @@ from typing import Protocol
 
 from app.adapters.base import ToolCapabilities
 from app.adapters.registry import ToolRegistry
+from app.core.env import merge_process_env
 from app.core.errors import AppError
 from app.repositories.profiles import ProfileRepository
 from app.repositories.secrets import SecretStore
@@ -38,7 +39,7 @@ class SubprocessTerminalSpawner:
         self._platform = sys.platform if platform is None else platform
 
     def spawn(self, command: Sequence[str], cwd: Path, env: Mapping[str, str]) -> int:
-        merged_env = dict(env)
+        merged_env = merge_process_env(env)
         if self._platform == "win32":
             process = subprocess.Popen(
                 list(command),
@@ -205,11 +206,12 @@ class LaunchService:
         if secret is None:
             raise AppError("SECRET_MISSING", "档案没有可用密钥", 400)
         model = request.model or (profile.models[0].id if profile.models else "")
-        return {
+        overrides = {
             spec.env_names[0]: profile.base_url,
             spec.env_names[1]: secret,
             spec.env_names[2]: model,
         }
+        return merge_process_env(overrides)
 
     def launch(self, request: LaunchRequest) -> LaunchResponse:
         preview = self.preview(request)
@@ -226,6 +228,7 @@ class LaunchService:
             spec.env_names[1]: secret,
             spec.env_names[2]: preview.model or "",
         }
+        env = merge_process_env(env)
         try:
             pid = self._spawner.spawn(preview.command, Path(request.project_dir), env)
         except OSError as exc:

@@ -110,7 +110,7 @@ class ChatService:
                 tool_id=session.tool_id,
                 profile_id=session.profile_id,
                 project_dir=session.project_dir,
-                model=preview.model,
+                model=session.model or preview.model,
             )
         )
         user_message = ChatMessage(
@@ -363,8 +363,6 @@ def build_chat_command(
         command = [executable, "-p", prompt, "--output-format", "stream-json", "--verbose"]
         if resume_from_session_id:
             command.extend(["--resume", resume_from_session_id])
-        if model:
-            command.extend(["--model", model])
         if reasoning_effort:
             command.extend(["--effort", reasoning_effort])
         return command

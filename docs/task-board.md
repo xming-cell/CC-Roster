@@ -34,6 +34,7 @@
 | 112 | 038 | `specs/112-resume-history` | 已完成 | 107 | `历史续聊 · 输入框` / `历史续聊 · 已切换`（快照待导出） | 输入框式续聊；不输入即只读；check 709 backend / 86 frontend |
 | 113 | 039 | `specs/113-local-config-import` | 已完成 | 105、110 | `本机配置` / `本机预览` / `导入成功`（快照待导出） | 本机配置覆盖 4 个工具；导入后绑定来源工具；check 714 backend / 87 frontend |
 | 114 | 040 | `specs/114-provider-tool-logos` | 已完成 | 103 | 复用 103 已确认规格 | 提供商页工具列表改用 ToolLogo；check 709 backend / 83 frontend |
+| 115 | 041 | `specs/115-chat-env-model` | 待验收 | 112 | — | 自动化 717 / 87 绿；真实 DeepSeek 对话待复测 |
 
 ## 3. 设计确认记录
 

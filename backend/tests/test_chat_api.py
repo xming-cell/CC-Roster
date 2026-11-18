@@ -180,8 +180,6 @@ def test_stream_maps_tokens_tools_and_done(tmp_path: Path) -> None:
         "--output-format",
         "stream-json",
         "--verbose",
-        "--model",
-        "claude-sonnet-4",
     ]
     assert cwd == project
     assert env["ANTHROPIC_MODEL"] == "claude-sonnet-4"
@@ -403,6 +401,37 @@ def test_build_chat_command_maps_codex_reasoning_effort_to_config() -> None:
     ]
 
 
+def test_chat_environment_preserves_windows_system_root_and_session_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SystemRoot", r"C:\Windows")
+    client, _service, fake, project, repository = harness(tmp_path)
+    session = create_session(client, project)
+
+    def set_model(store) -> None:
+        store.sessions[0].model = "deepseek-v4.1-flash-1017"
+
+    repository.mutate(set_model)
+    client.post(
+        f"/api/chat/sessions/{session['id']}/messages",
+        json={"content": "继续对话"},
+    )
+
+    command, _cwd, env = fake.calls[0]
+    assert env["SystemRoot"] == r"C:\Windows"
+    assert env["ANTHROPIC_MODEL"] == "deepseek-v4.1-flash-1017"
+    assert "--model" not in command
+
+
+def test_claude_command_uses_env_model_without_cli_model_flag() -> None:
+    from app.services.chat import build_chat_command
+
+    command = build_chat_command("claude-code", "claude", "deepseek-v4.1-flash-1017", "hi")
+
+    assert "--model" not in command
+    assert "deepseek-v4.1-flash-1017" not in command
+
+
 def test_create_session_persists_resume_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -574,6 +603,6 @@ def test_stream_uses_session_model_override(tmp_path: Path) -> None:
 
     client.post(f"/api/chat/sessions/{session['id']}/messages", json={"content": "读一个文件"})
 
-    command = fake.calls[0][0]
-    assert "--model" in command
-    assert command[command.index("--model") + 1] == "claude-opus-4"
+    command, _cwd, env = fake.calls[0]
+    assert "--model" not in command
+    assert env["ANTHROPIC_MODEL"] == "claude-opus-4"
