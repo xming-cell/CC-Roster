@@ -5,8 +5,8 @@
 - [x] T1 自动化回归：`check.py` 全绿，完整输出见下。
 - [~] T2 手动 E2E 场景表：已通过真实对话项；其余主流程待真人逐项执行。
 - [~] T3 性能基准：Windows 本机自动化基线已跑；主界面 / 扫描 / 上百会话的真实体感待手动记录。
-- [~] T4 跨平台验证：CI 矩阵已配置；最近一次三平台成功在 2026-11-17，本轮 112–114 提交后需 push 触发新一轮。
-- [x] T5 文档、发布清单与交接：README / PROGRESS / task-board / 各卡已更新；112/113 PNG 快照仍待从 Penpot 导出。
+- [x] T4 跨平台验证：run 44258118506 在 ubuntu / macos / windows 全部通过（commit 9a8a1e1）。
+- [x] T5 文档、发布清单与交接：README / PROGRESS / task-board / 各卡已更新；用户确认实验性项目，PNG 快照跳过。
 - [x] T6 列明延后与不做项，见文末。
 
 ## 手动 E2E 场景表
@@ -33,7 +33,7 @@
 
 - Windows 本机：`check.py` 714 backend / 87 frontend 全绿；backend pytest 约 29s，frontend vitest 约 9s。
 - CI：`.github/workflows/ci.yml` 使用 ubuntu-latest / macos-latest / windows-latest 矩阵；最近成功 run 44048141661（2026-11-17）。本轮提交需 push 后再确认三平台结果。
-- 主界面可用性、工具扫描不阻塞、上百会话不卡顿：待真人按真实数据记录数字与机器环境。
+- 主界面可用性、工具扫描不阻塞、上百会话不卡顿：待真人按真实数据记录数字与机器环境。\n- 三平台 CI：run 44258118506 全部通过。
 
 ## 延后 / 不做项（D-16 / ADR-014）
 
@@ -42,7 +42,7 @@
 - 桌面壳打包（Electron / Tauri）：按 D-16 结论延后，先保留本地 Web + FastAPI 形态。
 - Codex fork UI：本期只做 resume，不做 fork。
 - Cursor 本机配置导入：本期覆盖 4 个现有适配器，Cursor 后续按需。
-- 103–107 的 PNG 快照仍缺；112/113 新画板 PNG 也待导出，统一在发布前补。
+- PNG 快照全部跳过：用户确认这是实验性项目，不再补 103–107 / 112 / 113 的快照。
 
 ## 验收记录
 

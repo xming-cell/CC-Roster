@@ -21,6 +21,7 @@
 
 ## 当前状态
 
+- 2026-11-18 三平台 CI 通过：run 44258118506（ubuntu / macos / windows，commit 9a8a1e1）。用户确认实验性项目不补 PNG 快照。109 剩余真人 E2E 与性能实测。
 - 2026-11-18 115 真实复测通过：用户用 DeepSeek / 第三方 Anthropic 兼容模型对话正常，`unrecognized_model` 与 `SystemRoot` 缺失均已消失。109 继续进行剩余真人 E2E；流式对话项已通过。
 - 2026-11-18 115 完成（041）：聊天 / 终端子进程改为继承父环境，Windows 同时补齐 SYSTEMROOT / SystemRoot；Claude 不再传 --model，改用 ANTHROPIC_MODEL，会话模型切换同步进入 env；Codex 保持 --model。完整 check：717 backend / 87 frontend。真实 DeepSeek 对话待用户复测。
 - 2026-11-18 109 进入验收：自动化回归 714 backend / 87 frontend 全绿；README / task-board / 109 tasks 已更新。剩余必须真人执行 15 项 E2E、性能实测，并在 push 后确认三平台 CI；112/113 PNG 快照仍待导出。
