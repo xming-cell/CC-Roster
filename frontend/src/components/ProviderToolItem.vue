@@ -7,6 +7,7 @@ import {
   configurationLabel,
   installationLabel,
 } from '../utils/toolDisplay'
+import ToolLogo from './ToolLogo.vue'
 import ToolStatusBadge from './ToolStatusBadge.vue'
 
 const props = defineProps<{
@@ -48,10 +49,7 @@ const summaryText = computed(() => {
       @click="emit('select', tool.id)"
     >
       <span class="provider-tool__icon" aria-hidden="true">
-        <svg viewBox="0 0 16 16" focusable="false">
-          <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
-          <path d="m4.8 6 2.1 2-2.1 2M8.6 10h2.6" />
-        </svg>
+        <ToolLogo :tool-id="tool.id" size="sm" />
       </span>
 
       <span class="provider-tool__content">
@@ -121,15 +119,6 @@ const summaryText = computed(() => {
   color: var(--color-primary);
 }
 
-.provider-tool__icon svg {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.5;
-}
 
 .provider-tool__content {
   display: flex;

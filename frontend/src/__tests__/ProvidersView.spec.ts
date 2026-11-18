@@ -481,6 +481,18 @@ describe('ProvidersView', () => {
     expect(server.calls.some((call) => call.path.includes('tool_id='))).toBe(false)
   })
 
+  it('renders official tool logos in the provider tool list', async () => {
+    const server = new FakeServer()
+    const wrapper = mountProviders(server)
+    await settle()
+
+    const claudeButton = getByRole(wrapper, 'button', { name: 'Claude Code' })
+    expect(claudeButton.find('.tool-logo').exists()).toBe(true)
+    expect(claudeButton.find('.tool-logo').attributes('aria-hidden')).toBe('true')
+
+    const brokenButton = getByRole(wrapper, 'button', { name: 'Broken Tool' })
+    expect(brokenButton.find('.tool-logo--fallback').exists()).toBe(true)
+  })
   it('loads the selected tool providers, shows active state and does not re-request a loading tool', async () => {
     const server = new FakeServer()
     const wrapper = mountProviders(server)
