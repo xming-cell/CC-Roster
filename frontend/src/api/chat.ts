@@ -22,6 +22,8 @@ export interface ChatSessionView {
   status: ChatStatus
   model: string | null
   reasoning_effort: string | null
+  resume_from_tool_id: string | null
+  resume_from_session_id: string | null
   messages: ChatMessage[]
   created_at: string
   updated_at: string
@@ -38,6 +40,8 @@ export interface ChatCreateInput {
   title?: string
   model?: string
   reasoning_effort?: string
+  resume_from_tool_id?: string
+  resume_from_session_id?: string
 }
 
 export interface ChatUpdateInput {

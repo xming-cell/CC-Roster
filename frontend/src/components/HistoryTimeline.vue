@@ -12,6 +12,7 @@ const props = defineProps<{
   warnings: SessionWarning[]
   hasMore: boolean
   totalMessages: number | null
+  resumeEnabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -46,6 +47,9 @@ function detail(message: SessionMessage): string {
 }
 
 const headerMeta = computed(() => {
+  if (props.resumeEnabled === true) {
+    return props.totalMessages === null ? '只读 · 下方输入即继续' : '只读 · 下方输入即继续 · 共 ' + props.totalMessages + ' 条'
+  }
   if (props.totalMessages === null) {
     return '只读回放'
   }

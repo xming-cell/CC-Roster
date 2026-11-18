@@ -25,6 +25,7 @@ export interface ToolCapabilities {
   write_mode: 'none' | 'managed_fields'
   reasoning_effort?: boolean
   reasoning_effort_levels?: string[]
+  resume?: boolean
 }
 
 export interface ToolView {

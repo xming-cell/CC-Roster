@@ -18,7 +18,7 @@ function message(overrides: Partial<SessionMessage> & { id: string; role: Sessio
   }
 }
 
-function mountTimeline(messages: SessionMessage[], hasMore = false) {
+function mountTimeline(messages: SessionMessage[], hasMore = false, resumeEnabled = false) {
   return mount(HistoryTimeline, {
     props: {
       title: '修复构建失败',
@@ -29,6 +29,7 @@ function mountTimeline(messages: SessionMessage[], hasMore = false) {
       warnings: [],
       hasMore,
       totalMessages: messages.length,
+      resumeEnabled,
     },
   })
 }
@@ -69,6 +70,15 @@ describe('HistoryTimeline', () => {
     expect(wrapper.find('pre').text()).toContain('自定义补丁事件')
   })
 
+  it('marks the timeline as input-to-resume when resume is enabled', () => {
+    const wrapper = mountTimeline(
+      [message({ id: 'u1', role: 'user', content: '帮我排查构建失败' })],
+      false,
+      true,
+    )
+
+    expect(wrapper.text()).toContain('只读 · 下方输入即继续 · 共 1 条')
+  })
   it('shows load-earlier only when more messages exist', async () => {
     const more = mountTimeline([message({ id: 'u1', role: 'user', content: 'hi' })], true)
     expect(getByRole(more, 'button', { name: '加载更早的消息' }).exists()).toBe(true)

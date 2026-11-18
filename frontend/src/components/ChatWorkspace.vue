@@ -12,6 +12,7 @@ import { projectName } from '../utils/chatDisplay'
 import ChatComposer from './ChatComposer.vue'
 import HistoryPanel from './HistoryPanel.vue'
 import HistoryTimeline from './HistoryTimeline.vue'
+import HistoryResumeComposer from './HistoryResumeComposer.vue'
 import ChatTranscript from './ChatTranscript.vue'
 import ContextSwitcher from './ContextSwitcher.vue'
 import ProjectDirPrompt from './ProjectDirPrompt.vue'
@@ -57,6 +58,10 @@ const profilesData = ref<ProfileListResponse | null>(null)
 const profilesError = ref<string | null>(null)
 const actionError = ref<string | null>(null)
 const creating = ref(false)
+const resuming = ref(false)
+const resumeNotice = ref<string | null>(null)
+const historyModel = ref<string | null>(null)
+const historyEffort = ref<string | null>(null)
 const dirPromptOpen = ref(false)
 
 const canChat = computed(() => props.tool.capabilities.sessions === true)
@@ -90,6 +95,33 @@ const projectLabel = computed(() =>
   current.value === null ? '—' : projectName(current.value.project_dir),
 )
 const sessionTitle = computed(() => current.value?.title ?? '新会话')
+const historySession = computed(
+  () => historySessions.value.find((item) => item.id === historyCurrentId.value) ?? null,
+)
+const historyProjectPath = computed(() => historySession.value?.project_path ?? null)
+const canResume = computed(() => props.tool.capabilities.resume === true)
+const historyModelOptions = computed(() => activeProfile.value?.models ?? [])
+const historyResumeReason = computed<string | null>(() => {
+  if (!canResume.value) {
+    return '当前工具不支持从历史继续。'
+  }
+  if (historyCurrentId.value === null) {
+    return '从左侧选择一段会话后，可以在底部输入继续。'
+  }
+  if (historyDetailLoading.value) {
+    return '正在读取会话，读取完成后可以继续。'
+  }
+  if (historyDetailError.value !== null) {
+    return '历史读取失败，暂时无法继续。'
+  }
+  if (activeProfile.value === null) {
+    return '先在供应商页启用一个供应商，才能继续这段历史。'
+  }
+  if (historyProjectPath.value === null) {
+    return '这段历史没有项目目录，无法继续。'
+  }
+  return null
+})
 
 async function loadProfiles(): Promise<void> {
   profilesError.value = null
@@ -135,12 +167,18 @@ watch(
     mode.value = 'chat'
     profilesData.value = null
     actionError.value = null
+    resumeNotice.value = null
+    historyModel.value = null
+    historyEffort.value = null
     void initialize()
   },
 )
 
 async function openHistory(): Promise<void> {
   mode.value = 'history'
+  resumeNotice.value = null
+  historyModel.value = current.value?.model ?? null
+  historyEffort.value = current.value?.reasoning_effort ?? null
   await history.fetchSessions(props.tool.id)
   if (historySessions.value.length > 0 && historyCurrentId.value === null) {
     await history.openSession(historySessions.value[0]?.id ?? '')
@@ -188,6 +226,7 @@ function handleNew(): void {
     return
   }
   actionError.value = null
+  resumeNotice.value = null
   const remembered = chat.lastProjectFor(props.tool.id)
   if (remembered === null) {
     dirPromptOpen.value = true
@@ -211,6 +250,56 @@ async function handleEffort(value: string | null): Promise<void> {
     await chat.updateCurrent({ reasoning_effort: value })
   } catch (caught) {
     actionError.value = errorText(caught, '切换思考强度失败')
+  }
+}
+
+function handleHistoryModel(value: string | null): void {
+  historyModel.value = value
+}
+
+function handleHistoryEffort(value: string | null): void {
+  historyEffort.value = value
+}
+
+async function handleHistorySend(content: string): Promise<void> {
+  const sessionId = historyCurrentId.value
+  const projectDir = historyProjectPath.value
+  const profile = activeProfile.value
+  if (
+    historyResumeReason.value !== null ||
+    sessionId === null ||
+    projectDir === null ||
+    profile === null
+  ) {
+    return
+  }
+  const title = historySession.value?.title ?? '历史会话'
+  resuming.value = true
+  actionError.value = null
+  resumeNotice.value = null
+  try {
+    const created = await chat.createSession({
+      tool_id: props.tool.id,
+      profile_id: profile.id,
+      project_dir: projectDir,
+      reasoning_effort: historyEffort.value ?? undefined,
+      resume_from_tool_id: props.tool.id,
+      resume_from_session_id: sessionId,
+    })
+    if (created === null) {
+      actionError.value = currentError.value ?? '创建续聊会话失败'
+      return
+    }
+    if (historyModel.value !== null) {
+      await chat.updateCurrent({ model: historyModel.value })
+    }
+    mode.value = 'chat'
+    resumeNotice.value = `已从「${title}」继续。`
+    await chat.send(content)
+  } catch (caught) {
+    actionError.value = errorText(caught, '从历史继续失败')
+  } finally {
+    resuming.value = false
   }
 }
 
@@ -282,6 +371,12 @@ async function handleStop(): Promise<void> {
 
     <div v-if="profilesError !== null" class="chat__banner" role="alert">{{ profilesError }}</div>
     <div v-if="actionError !== null" class="chat__banner" role="alert">{{ actionError }}</div>
+    <div v-if="resumeNotice !== null" class="chat__notice chat__notice--success" role="status">
+      <span>{{ resumeNotice }}</span>
+      <button class="chat__notice-close" type="button" aria-label="关闭提示" @click="resumeNotice = null">
+        关闭
+      </button>
+    </div>
 
     <div v-if="mode === 'history'" class="chat__history">
       <HistoryPanel
@@ -294,17 +389,33 @@ async function handleStop(): Promise<void> {
         @select="handleHistorySelect"
         @retry="handleHistoryRetry"
       />
-      <HistoryTimeline
-        :title="historyTitle"
-        :session-id="historyCurrentId"
-        :messages="historyMessages"
-        :loading="historyDetailLoading"
-        :error="historyDetailError"
-        :warnings="historyDetailWarnings"
-        :has-more="historyHasMore"
-        :total-messages="historyTotal"
-        @load-earlier="handleLoadEarlier"
-      />
+      <div class="chat__history-main">
+        <HistoryTimeline
+          :title="historyTitle"
+          :session-id="historyCurrentId"
+          :messages="historyMessages"
+          :loading="historyDetailLoading"
+          :error="historyDetailError"
+          :warnings="historyDetailWarnings"
+          :has-more="historyHasMore"
+          :total-messages="historyTotal"
+          :resume-enabled="canResume"
+          @load-earlier="handleLoadEarlier"
+        />
+        <HistoryResumeComposer
+          :key="historyCurrentId ?? 'none'"
+          :model="historyModel"
+          :models="historyModelOptions"
+          :effort="historyEffort"
+          :effort-levels="effortLevels"
+          :sending="resuming"
+          :reason="historyResumeReason"
+          @update:model="handleHistoryModel"
+          @update:effort="handleHistoryEffort"
+          @send="handleHistorySend"
+          @stop="handleStop"
+        />
+      </div>
     </div>
 
     <div v-else-if="!canChat" class="chat__fallback">
@@ -431,6 +542,13 @@ async function handleStop(): Promise<void> {
   min-height: 0;
 }
 
+.chat__history-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
 .chat__link {
   padding: 4px 6px;
   border: 0;
@@ -489,6 +607,33 @@ async function handleStop(): Promise<void> {
 
 .chat__banner--inline {
   margin: 0 var(--space-xl) var(--space-sm);
+}
+
+.chat__notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin: var(--space-sm) var(--space-xl) 0;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+}
+
+.chat__notice--success {
+  background: var(--color-success-bg);
+  color: var(--color-success-fg);
+}
+
+.chat__notice-close {
+  flex: none;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font-size: 10px;
+  cursor: pointer;
 }
 
 .chat__fallback {

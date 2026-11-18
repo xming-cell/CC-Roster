@@ -42,6 +42,7 @@ const tool: ToolView = {
     write_mode: 'managed_fields',
     reasoning_effort: true,
     reasoning_effort_levels: ['low', 'medium', 'high'],
+    resume: true,
   },
 }
 
@@ -88,6 +89,8 @@ const session: ChatSessionView = {
   status: 'idle',
   model: null,
   reasoning_effort: null,
+  resume_from_tool_id: null,
+  resume_from_session_id: null,
   messages: [],
   created_at: NOW,
   updated_at: NOW,
@@ -97,6 +100,28 @@ interface CallRecord {
   url: string
   method: string
   body: Record<string, unknown>
+}
+
+function sseResponse(text: string): Response {
+  const encoder = new TextEncoder()
+  let sent = false
+  return {
+    ok: true,
+    status: 200,
+    body: {
+      getReader() {
+        return {
+          read: () => {
+            if (sent) {
+              return Promise.resolve({ done: true, value: undefined })
+            }
+            sent = true
+            return Promise.resolve({ done: false, value: encoder.encode(text) })
+          },
+        }
+      },
+    },
+  } as unknown as Response
 }
 
 function makeServer(options: { sessions?: ChatSessionView[]; tool?: ToolView } = {}) {
@@ -123,6 +148,13 @@ function makeServer(options: { sessions?: ChatSessionView[]; tool?: ToolView } =
       }
       if (url.startsWith('/api/chat/sessions/') && method === 'PATCH') {
         return Promise.resolve(jsonResponse({ ...(sessions[0] ?? session), ...body }))
+      }
+      if (url.endsWith('/messages') && method === 'POST') {
+        return Promise.resolve(
+          sseResponse(
+            'data: {"type":"done","status":"idle","message":"完成","content":null,"tool_name":null}\n\n',
+          ),
+        )
       }
       if (url.startsWith('/api/profiles')) {
         return Promise.resolve(jsonResponse(profileList))
@@ -255,7 +287,7 @@ describe('ChatWorkspace', () => {
     expect(patch?.body.model).toBe('claude-opus-4')
   })
 
-  it('switches to read-only history and opens the newest session', async () => {
+  it('opens history with the resume composer for supported tools', async () => {
     makeServer({ sessions: [session] })
     const wrapper = mountWorkspace()
     await flushPromises()
@@ -264,8 +296,45 @@ describe('ChatWorkspace', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('修复构建失败')
-    expect(wrapper.text()).toContain('只读 · 共 2 条')
+    expect(wrapper.text()).toContain('只读 · 下方输入即继续 · 共 2 条')
     expect(wrapper.text()).toContain('已修复依赖冲突')
+    expect(wrapper.find('textarea').exists()).toBe(true)
+  })
+
+  it('creates a resumed session and sends the first message from history', async () => {
+    const calls = makeServer({ sessions: [session] })
+    const wrapper = mountWorkspace()
+    await flushPromises()
+
+    await getByRole(wrapper, 'button', { name: '历史' }).trigger('click')
+    await flushPromises()
+    await wrapper.find('textarea').setValue('继续补回归测试')
+    await getByText(wrapper, '发送').trigger('click')
+    await flushPromises()
+
+    const create = calls.find(
+      (call) => call.url === '/api/chat/sessions' && call.method === 'POST',
+    )
+    expect(create?.body.resume_from_tool_id).toBe('claude-code')
+    expect(create?.body.resume_from_session_id).toBe('history-1')
+    expect(create?.body.project_dir).toBe('D:/projects/demo')
+    const message = calls.find((call) => call.url.endsWith('/messages') && call.method === 'POST')
+    expect(message?.body.content).toBe('继续补回归测试')
+    expect(wrapper.text()).toContain('已从「修复构建失败」继续。')
+  })
+
+  it('shows a read-only note instead of a composer when resume is unsupported', async () => {
+    makeServer({ sessions: [session] })
+    const wrapper = mountWorkspace({
+      ...tool,
+      capabilities: { ...tool.capabilities, resume: false },
+    })
+    await flushPromises()
+
+    await getByRole(wrapper, 'button', { name: '历史' }).trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('当前工具不支持从历史继续。')
     expect(wrapper.find('textarea').exists()).toBe(false)
   })
 
