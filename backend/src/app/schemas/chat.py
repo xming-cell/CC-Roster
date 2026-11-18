@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.paths import validate_absolute_path
 from app.core.redaction import redact_text
@@ -83,6 +83,8 @@ class ChatSession(BaseModel):
     status: ChatStatus = "idle"
     model: str | None = None
     reasoning_effort: str | None = None
+    resume_from_tool_id: str | None = None
+    resume_from_session_id: str | None = None
     messages: list[ChatMessage] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
@@ -118,6 +120,8 @@ class ChatCreateRequest(BaseModel):
     project_dir: str
     title: str | None = None
     reasoning_effort: str | None = None
+    resume_from_tool_id: str | None = None
+    resume_from_session_id: str | None = None
 
     @field_validator("reasoning_effort")
     @classmethod
@@ -136,6 +140,12 @@ class ChatCreateRequest(BaseModel):
     @classmethod
     def _absolute(cls, value: str) -> str:
         return validate_absolute_path(value, label="项目目录")
+
+    @model_validator(mode="after")
+    def _resume_pair(self) -> "ChatCreateRequest":
+        if (self.resume_from_tool_id is None) != (self.resume_from_session_id is None):
+            raise ValueError("续聊来源工具与会话必须同时提供")
+        return self
 
     @field_validator("title")
     @classmethod
@@ -203,6 +213,8 @@ class ChatSessionView(BaseModel):
     status: ChatStatus
     model: str | None = None
     reasoning_effort: str | None = None
+    resume_from_tool_id: str | None = None
+    resume_from_session_id: str | None = None
     messages: list[ChatMessage]
     created_at: datetime
     updated_at: datetime

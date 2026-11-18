@@ -3,10 +3,13 @@
 import json
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 from profile_fixtures import make_profile
 
+from app.adapters.base import ToolCapabilities
 from app.adapters.claude_code import ClaudeCodeAdapter
 from app.adapters.codex_cli import CodexCliAdapter
 from app.adapters.registry import ToolRegistry
@@ -322,6 +325,10 @@ def test_adapters_declare_verified_reasoning_effort_levels(tmp_path: Path) -> No
     assert gemini.capabilities.reasoning_effort is False
     assert gemini.capabilities.reasoning_effort_levels == []
     assert opencode.capabilities.reasoning_effort is False
+    assert claude.capabilities.resume is True
+    assert codex.capabilities.resume is True
+    assert gemini.capabilities.resume is False
+    assert opencode.capabilities.resume is False
 
 
 def test_create_session_persists_normalized_reasoning_effort(tmp_path: Path) -> None:
@@ -394,6 +401,92 @@ def test_build_chat_command_maps_codex_reasoning_effort_to_config() -> None:
         "model_reasoning_effort=medium",
         "hi",
     ]
+
+
+def test_create_session_persists_resume_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, service, _fake, project, _repository = harness(tmp_path)
+    source = SimpleNamespace(id="source-session", title="旧标题")
+    monkeypatch.setattr(service._launcher, "find_session", lambda _tool, _session: source)
+
+    response = client.post(
+        "/api/chat/sessions",
+        json={
+            "tool_id": "claude-code",
+            "profile_id": PROFILE_ID,
+            "project_dir": str(project),
+            "resume_from_tool_id": "claude-code",
+            "resume_from_session_id": "source-session",
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["title"] == "续 · 旧标题"
+    assert body["resume_from_tool_id"] == "claude-code"
+    assert body["resume_from_session_id"] == "source-session"
+
+
+def test_create_session_rejects_missing_or_cross_tool_resume_source(tmp_path: Path) -> None:
+    client, _service, _fake, project, _repository = harness(tmp_path)
+    missing = client.post(
+        "/api/chat/sessions",
+        json={
+            "tool_id": "claude-code",
+            "profile_id": PROFILE_ID,
+            "project_dir": str(project),
+            "resume_from_tool_id": "claude-code",
+            "resume_from_session_id": "missing-session",
+        },
+    )
+    assert missing.status_code == 404
+    assert missing.json()["code"] == "CHAT_RESUME_SOURCE_NOT_FOUND"
+
+    cross = client.post(
+        "/api/chat/sessions",
+        json={
+            "tool_id": "claude-code",
+            "profile_id": PROFILE_ID,
+            "project_dir": str(project),
+            "resume_from_tool_id": "codex-cli",
+            "resume_from_session_id": "source-session",
+        },
+    )
+    assert cross.status_code == 422
+    assert cross.json()["code"] == "CHAT_RESUME_TOOL_MISMATCH"
+
+
+def test_create_session_rejects_unsupported_resume_capability(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, service, _fake, project, _repository = harness(tmp_path)
+    monkeypatch.setattr(service._launcher, "capabilities", lambda _tool: ToolCapabilities())
+    response = client.post(
+        "/api/chat/sessions",
+        json={
+            "tool_id": "claude-code",
+            "profile_id": PROFILE_ID,
+            "project_dir": str(project),
+            "resume_from_tool_id": "claude-code",
+            "resume_from_session_id": "source-session",
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["code"] == "CHAT_RESUME_UNSUPPORTED"
+
+
+def test_resume_commands_use_cli_resume_arguments() -> None:
+    from app.services.chat import build_chat_command
+
+    claude = build_chat_command(
+        "claude-code", "claude", "claude-sonnet-4", "hi", None, "source-session"
+    )
+    assert claude[claude.index("--resume") + 1] == "source-session"
+
+    codex = build_chat_command("codex-cli", "codex", "gpt-5", "hi", None, "source-session")
+    assert codex[:4] == ["codex", "exec", "resume", "source-session"]
+    assert "--json" in codex
 
 
 def test_patch_session_updates_model_and_reasoning_effort(tmp_path: Path) -> None:

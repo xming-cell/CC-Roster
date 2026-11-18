@@ -101,6 +101,7 @@ class CodexCliAdapter(ManagedFieldsAdapter):
         write_mode="managed_fields",
         reasoning_effort=True,
         reasoning_effort_levels=["low", "medium", "high"],
+        resume=True,
     )
 
     def __init__(self, config_dir: Path, *, which: WhichFn | None = None) -> None:

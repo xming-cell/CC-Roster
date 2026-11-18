@@ -63,6 +63,7 @@ class ToolCapabilities(BaseModel):
     write_mode: Literal["none", "managed_fields"] = "none"
     reasoning_effort: bool = False
     reasoning_effort_levels: list[str] = Field(default_factory=list)
+    resume: bool = False
 
 
 class ToolDetection(BaseModel):

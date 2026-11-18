@@ -24,6 +24,7 @@ from app.schemas.launcher import (
     LaunchResponse,
 )
 from app.schemas.profile import Profile
+from app.schemas.session import SessionSummary
 
 
 class TerminalSpawner(Protocol):
@@ -124,6 +125,18 @@ class LaunchService:
     def profile(self, profile_id: str) -> Profile:
         """只读供应商; 供对话校验模型清单。"""
         return self._profile(profile_id)
+
+    def find_session(self, tool_id: str, session_id: str) -> SessionSummary | None:
+        """按工具查找历史会话; 用于续聊前确认原会话仍存在。"""
+        try:
+            adapter = self._registry.get(tool_id)
+            sessions = adapter.list_sessions()
+        except Exception:
+            return None
+        for session in sessions:
+            if session.id == session_id:
+                return session
+        return None
 
     def preview(self, request: LaunchRequest) -> LaunchPreview:
         profile = self._profile(request.profile_id)

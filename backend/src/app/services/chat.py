@@ -11,6 +11,7 @@ from app.core.errors import AppError
 from app.core.redaction import redact_text
 from app.repositories.chat import ChatRepository
 from app.schemas.chat import (
+    MAX_TITLE_LENGTH,
     ChatCancelResponse,
     ChatCreateRequest,
     ChatEvent,
@@ -54,15 +55,24 @@ class ChatService:
 
     def create_session(self, payload: ChatCreateRequest) -> ChatSessionView:
         self._validate_context(payload)
+        resume_title = self._validate_resume(payload)
         now = utc_now()
+        if payload.title:
+            title = payload.title
+        elif resume_title:
+            title = f"续 · {resume_title}"[:MAX_TITLE_LENGTH]
+        else:
+            title = "新对话"
         session = ChatSession(
             id=str(uuid.uuid4()),
             tool_id=payload.tool_id,
             profile_id=payload.profile_id,
             project_dir=payload.project_dir,
-            title=payload.title or "新对话",
+            title=title,
             status="idle",
             reasoning_effort=payload.reasoning_effort,
+            resume_from_tool_id=payload.resume_from_tool_id,
+            resume_from_session_id=payload.resume_from_session_id,
             messages=[],
             created_at=now,
             updated_at=now,
@@ -118,6 +128,7 @@ class ChatService:
             session.model or preview.model,
             payload.content,
             session.reasoning_effort,
+            session.resume_from_session_id,
         )
         assistant_parts: list[str] = []
         finished = False
@@ -224,6 +235,19 @@ class ChatService:
         if session.status == "running":
             self._update(session_id, lambda item: _set_status(item, "cancelled"))
         return ChatCancelResponse(cancelled=False, message="没有正在运行的工具进程")
+
+    def _validate_resume(self, payload: ChatCreateRequest) -> str | None:
+        if payload.resume_from_tool_id is None or payload.resume_from_session_id is None:
+            return None
+        if payload.resume_from_tool_id != payload.tool_id:
+            raise AppError("CHAT_RESUME_TOOL_MISMATCH", "不能跨工具继续历史会话", 422)
+        capabilities = self._launcher.capabilities(payload.tool_id)
+        if not capabilities.resume:
+            raise AppError("CHAT_RESUME_UNSUPPORTED", "当前工具不支持继续历史会话", 422)
+        source = self._launcher.find_session(payload.tool_id, payload.resume_from_session_id)
+        if source is None:
+            raise AppError("CHAT_RESUME_SOURCE_NOT_FOUND", "原历史会话不存在或已无法读取", 404)
+        return source.title
 
     def _validate_context(self, payload: ChatCreateRequest) -> LaunchPreview:
         project = Path(payload.project_dir)
@@ -333,16 +357,22 @@ def build_chat_command(
     model: str | None,
     prompt: str,
     reasoning_effort: str | None = None,
+    resume_from_session_id: str | None = None,
 ) -> list[str]:
     if tool_id == "claude-code":
         command = [executable, "-p", prompt, "--output-format", "stream-json", "--verbose"]
+        if resume_from_session_id:
+            command.extend(["--resume", resume_from_session_id])
         if model:
             command.extend(["--model", model])
         if reasoning_effort:
             command.extend(["--effort", reasoning_effort])
         return command
     if tool_id == "codex-cli":
-        command = [executable, "exec", "--json"]
+        command = [executable, "exec"]
+        if resume_from_session_id:
+            command.extend(["resume", resume_from_session_id])
+        command.append("--json")
         if model:
             command.extend(["--model", model])
         if reasoning_effort:

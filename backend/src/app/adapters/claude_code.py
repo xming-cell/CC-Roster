@@ -97,6 +97,7 @@ class ClaudeCodeAdapter(ManagedFieldsAdapter):
         write_mode="managed_fields",
         reasoning_effort=True,
         reasoning_effort_levels=["low", "medium", "high", "xhigh", "max"],
+        resume=True,
     )
 
     def __init__(self, config_dir: Path, *, which: WhichFn | None = None) -> None:
